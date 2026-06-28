@@ -1,0 +1,11 @@
+[tool.uv.workspace]
+members = [
+  "packages/agent-core",
+  "apps/agent-server",
+  "apps/agent-gateway",
+  "apps/agents/master-agent",
+  "apps/agents/demo-business-agent",
+]
+
+[tool.uv]
+package = false

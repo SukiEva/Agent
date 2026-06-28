@@ -1,0 +1,12 @@
+service:
+  name: agent-server
+
+server:
+  host: 0.0.0.0
+  port: 8000
+
+gateway:
+  base_url: http://localhost:8001
+
+routing:
+  master_agent_id: master_agent

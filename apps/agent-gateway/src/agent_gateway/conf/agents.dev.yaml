@@ -1,0 +1,12 @@
+agents:
+  - agent_id: master_agent
+    role: master
+    visibility: internal
+    base_url: http://localhost:8010
+    card_url: http://localhost:8010/.well-known/agent-card.json
+
+  - agent_id: demo_business_agent
+    role: business
+    visibility: public
+    base_url: http://localhost:8011
+    card_url: http://localhost:8011/.well-known/agent-card.json

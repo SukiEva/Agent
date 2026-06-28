@@ -1,0 +1,24 @@
+service:
+  name: master-agent
+
+server:
+  host: 0.0.0.0
+  port: 8010
+
+agent:
+  id: master_agent
+  role: master
+  visibility: internal
+  display:
+    label: Master Agent
+    description: Routes user requests to business agents.
+
+gateway:
+  base_url: http://localhost:8001
+
+llm:
+  base_url: ${oc.env:OPENAI_BASE_URL,https://api.openai.com/v1}
+  api_key: ${oc.env:OPENAI_API_KEY,}
+  model: ${oc.env:OPENAI_MODEL,gpt-4.1-mini}
+  temperature: 0.2
+  timeout_seconds: 60

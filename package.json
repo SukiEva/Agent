@@ -1,0 +1,15 @@
+{
+  "name": "agent-runtime",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "web",
+    "packages/agent-ui-contracts"
+  ],
+  "scripts": {
+    "web:dev": "bun --cwd web dev",
+    "web:build": "bun --cwd web build",
+    "web:preview": "bun --cwd web preview"
+  },
+  "packageManager": "bun@latest"
+}

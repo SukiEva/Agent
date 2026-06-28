@@ -1,0 +1,29 @@
+service:
+  name: demo-business-agent
+
+server:
+  host: 0.0.0.0
+  port: 8011
+
+agent:
+  id: demo_business_agent
+  role: business
+  visibility: public
+  display:
+    label: Demo Business Agent
+    description: Validates progress, bridge actions, cancellation, and UI rendering.
+  capabilities:
+    - name: demo_task
+      description: Runs a fake task and returns a demo UI component.
+  contracts:
+    result_types:
+      - demo_result.v1
+    ui_components:
+      - demo.result_card@v1
+
+llm:
+  base_url: ${oc.env:OPENAI_BASE_URL,https://api.openai.com/v1}
+  api_key: ${oc.env:OPENAI_API_KEY,}
+  model: ${oc.env:OPENAI_MODEL,gpt-4.1-mini}
+  temperature: 0.2
+  timeout_seconds: 60

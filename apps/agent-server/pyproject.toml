@@ -1,0 +1,25 @@
+[project]
+name = "agent-server"
+version = "0.1.0"
+description = "Human-facing API and SSE service."
+requires-python = ">=3.11"
+dependencies = [
+  "agent-core",
+  "fastapi>=0.110",
+  "hypercorn>=0.16",
+  "httpx>=0.27",
+  "pydantic>=2.0",
+]
+
+[project.scripts]
+agent-server = "agent_server.main:main"
+
+[tool.uv.sources]
+agent-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_server"]

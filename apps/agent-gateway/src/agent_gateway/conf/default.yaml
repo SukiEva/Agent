@@ -1,0 +1,9 @@
+service:
+  name: agent-gateway
+
+server:
+  host: 0.0.0.0
+  port: 8001
+
+registry:
+  path: agents.dev.yaml

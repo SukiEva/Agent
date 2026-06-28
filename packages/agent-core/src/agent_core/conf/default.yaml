@@ -1,0 +1,12 @@
+redis:
+  url: redis://localhost:6379/0
+
+logging:
+  level: INFO
+  format: json
+
+timeouts:
+  run_seconds: 600
+  business_task_seconds: 300
+  bridge_action_seconds: 30
+  llm_call_seconds: 60
