@@ -4,7 +4,6 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .venv/
-uv.lock
 
 node_modules/
 dist/

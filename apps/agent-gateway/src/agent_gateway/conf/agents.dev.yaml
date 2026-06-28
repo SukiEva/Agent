@@ -4,9 +4,18 @@ agents:
     visibility: internal
     base_url: http://localhost:8010
     card_url: http://localhost:8010/.well-known/agent-card.json
+    display:
+      label: Master Agent
+      description: Routes requests to business agents.
 
   - agent_id: demo_business_agent
     role: business
     visibility: public
     base_url: http://localhost:8011
     card_url: http://localhost:8011/.well-known/agent-card.json
+    display:
+      label: Demo Business Agent
+      description: Validates progress, bridge actions, cancellation, and UI rendering.
+    capabilities:
+      - name: demo_task
+        description: Runs a fake task and returns a demo UI component.

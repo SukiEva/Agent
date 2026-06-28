@@ -16,6 +16,16 @@ class ClientActionRequest(BaseModel):
     timeout_ms: int = 30000
 
 
+class ClientActionCreate(BaseModel):
+    conversation_id: str
+    run_id: str
+    agent_id: str
+    action_name: str
+    contract_version: str = "v1"
+    args: dict[str, object] = Field(default_factory=dict)
+    timeout_ms: int = 30000
+
+
 class ClientActionResult(BaseModel):
     action_id: str
     status: Literal["completed", "failed", "rejected", "cancelled", "timeout"]

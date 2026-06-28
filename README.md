@@ -23,6 +23,12 @@ uv run --package master-agent master-agent
 uv run --package demo-business-agent demo-business-agent
 ```
 
+With the four services running, verify the backend path:
+
+```bash
+python scripts/smoke_backend.py
+```
+
 ## Frontend
 
 ```bash

@@ -1,14 +1,130 @@
-from fastapi import FastAPI
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse
+
+from agent_core.config import load_service_config
+from agent_core.schemas.business import BusinessProgressEvent, BusinessResultEnvelope, DeliveryDirective
+from agent_core.schemas.ui import UiDescriptor, UiFallback
+from agent_core.serialization import json_line, to_dict
+
+
+def _conf_dir() -> Path:
+    return Path(__file__).resolve().parent / "conf"
+
+
+def _settings() -> dict[str, Any]:
+    return load_service_config(_conf_dir())
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Demo Business Agent")
+    app.state.settings = _settings()
 
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/.well-known/agent-card.json")
+    async def agent_card() -> dict[str, object]:
+        agent = app.state.settings["agent"]
+        return {
+            "name": agent["id"],
+            "description": agent["display"]["description"],
+            "url": "http://localhost:8011",
+            "metadata": agent,
+        }
+
+    @app.post("/a2a/tasks")
+    async def create_task(request: Request) -> StreamingResponse:
+        payload = await request.json()
+
+        async def stream():
+            run_id = payload["run_id"]
+            task_id = payload["task_id"]
+            agent_id = app.state.settings["agent"]["id"]
+            progress_messages = [
+                "Demo agent accepted the task.",
+                "Demo agent is preparing a component descriptor.",
+                "Demo agent completed the fake business result.",
+            ]
+            for message in progress_messages:
+                await asyncio.sleep(0.1)
+                yield json_line(
+                    to_dict(
+                        BusinessProgressEvent(
+                            agent_id=agent_id,
+                            run_id=run_id,
+                            task_id=task_id,
+                            message=message,
+                        )
+                    )
+                )
+            bridge_result = await _maybe_call_frontend_bridge(app, payload)
+            envelope = BusinessResultEnvelope(
+                status="completed",
+                agent_id=agent_id,
+                run_id=run_id,
+                task_id=task_id,
+                result_type="demo_result.v1",
+                result={
+                    "summary": f"Processed: {payload['user_message']['content']}",
+                    "items": ["A2A routing worked", "SSE replay path is ready", "UI descriptor delivered"],
+                    "bridge_result": bridge_result,
+                },
+                ui=UiDescriptor(
+                    component="demo.result_card",
+                    component_version="v1",
+                    props={
+                        "title": "Demo Result",
+                        "summary": f"Processed: {payload['user_message']['content']}",
+                        "items": ["A2A routing worked", "SSE replay path is ready", "UI descriptor delivered"],
+                    },
+                    fallback=UiFallback(
+                        component="common.markdown",
+                        props={"content": "Demo result completed."},
+                    ),
+                ),
+                delivery=DeliveryDirective(mode="passthrough", final=True, needs_master_summary=False),
+            )
+            yield json_line({"type": "business.result", "envelope": to_dict(envelope)})
+
+        return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+    @app.post("/a2a/tasks/{task_id}/cancel")
+    async def cancel_task(task_id: str) -> dict[str, object]:
+        return {"status": "cancel_requested", "task_id": task_id}
+
     return app
+
+
+async def _maybe_call_frontend_bridge(app: FastAPI, payload: dict[str, Any]) -> dict[str, object] | None:
+    bridge = payload.get("context", {}).get("bridge")
+    if not isinstance(bridge, dict) or not bridge.get("enabled"):
+        return None
+    import httpx
+
+    action_name = str(bridge.get("action_name", "get_selected_text"))
+    args = bridge.get("args") if isinstance(bridge.get("args"), dict) else {}
+    agent_server_base_url = app.state.settings.get("agent_server", {}).get("base_url", "http://localhost:8000")
+    async with httpx.AsyncClient(timeout=None, trust_env=False) as client:
+        response = await client.post(
+            f"{agent_server_base_url}/internal/client-actions",
+            json={
+                "conversation_id": payload["conversation_id"],
+                "run_id": payload["run_id"],
+                "agent_id": app.state.settings["agent"]["id"],
+                "action_name": action_name,
+                "args": args,
+                "timeout_ms": int(bridge.get("timeout_ms", 30000)),
+            },
+        )
+        response.raise_for_status()
+        return response.json()
 
 
 app = create_app()

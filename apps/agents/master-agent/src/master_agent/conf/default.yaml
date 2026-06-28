@@ -18,7 +18,7 @@ gateway:
 
 llm:
   base_url: ${oc.env:OPENAI_BASE_URL,https://api.openai.com/v1}
-  api_key: ${oc.env:OPENAI_API_KEY,}
+  api_key: ${oc.env:OPENAI_API_KEY,""}
   model: ${oc.env:OPENAI_MODEL,gpt-4.1-mini}
   temperature: 0.2
   timeout_seconds: 60
