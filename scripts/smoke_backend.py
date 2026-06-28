@@ -6,6 +6,9 @@ import time
 from typing import Any
 
 
+SseFrame = dict[str, Any]
+
+
 def request(method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any] | list[Any]:
     conn = http.client.HTTPConnection("localhost", 8000, timeout=10)
     payload = json.dumps(body).encode() if body is not None else None
@@ -19,14 +22,29 @@ def request(method: str, path: str, body: dict[str, Any] | None = None) -> dict[
     return json.loads(data or b"{}")
 
 
-def read_sse_until(conversation_id: str, stop_type: str = "RUN_FINISHED", bridge_result: bool = False) -> list[dict[str, Any]]:
+def read_sse_until(
+    conversation_id: str,
+    stop_type: str = "RUN_FINISHED",
+    bridge_result: bool = False,
+    last_event_id: str | None = None,
+) -> list[dict[str, Any]]:
+    return [frame["data"] for frame in read_sse_frames_until(conversation_id, stop_type, bridge_result, last_event_id)]
+
+
+def read_sse_frames_until(
+    conversation_id: str,
+    stop_type: str = "RUN_FINISHED",
+    bridge_result: bool = False,
+    last_event_id: str | None = None,
+) -> list[SseFrame]:
     conn = http.client.HTTPConnection("localhost", 8000, timeout=10)
-    conn.request("GET", f"/api/conversations/{conversation_id}/events")
+    headers = {"Last-Event-ID": last_event_id} if last_event_id else {}
+    conn.request("GET", f"/api/conversations/{conversation_id}/events", headers=headers)
     response = conn.getresponse()
     if response.status != 200:
         raise RuntimeError(f"SSE failed {response.status}")
 
-    events: list[dict[str, Any]] = []
+    frames: list[SseFrame] = []
     current: list[str] = []
     tool_call_id: str | None = None
     posted = False
@@ -36,10 +54,11 @@ def read_sse_until(conversation_id: str, stop_type: str = "RUN_FINISHED", bridge
         if line == "":
             break
         if line == "\n":
+            id_lines = [part[4:].strip() for part in current if part.startswith("id:")]
             data_lines = [part[6:].strip() for part in current if part.startswith("data:")]
             if data_lines:
                 event = json.loads("".join(data_lines))
-                events.append(event)
+                frames.append({"id": id_lines[-1] if id_lines else None, "data": event})
                 if event["type"] == "TOOL_CALL_START":
                     tool_call_id = event["toolCallId"]
                 if bridge_result and event["type"] == "TOOL_CALL_END" and tool_call_id and not posted:
@@ -55,7 +74,7 @@ def read_sse_until(conversation_id: str, stop_type: str = "RUN_FINISHED", bridge
         else:
             current.append(line.rstrip("\n"))
     conn.close()
-    return events
+    return frames
 
 
 def run_case(*, bridge: bool) -> list[str]:
@@ -86,6 +105,37 @@ def run_case(*, bridge: bool) -> list[str]:
     if missing:
         raise RuntimeError(f"missing events for bridge={bridge}: {sorted(missing)}; saw {types}")
     return types
+
+
+def run_replay_case() -> list[str]:
+    conversation = request("POST", "/api/conversations")
+    assert isinstance(conversation, dict)
+    run = request(
+        "POST",
+        "/api/runs",
+        {
+            "conversation_id": conversation["conversation_id"],
+            "client_id": conversation["client_id"],
+            "message": {"type": "text", "content": "run replay demo"},
+            "selected_agent_id": "demo_business_agent",
+            "attachments": [],
+            "context": {},
+        },
+    )
+    assert isinstance(run, dict)
+    frames = read_sse_frames_until(str(conversation["conversation_id"]))
+    if len(frames) < 2 or not frames[0]["id"]:
+        raise RuntimeError(f"not enough frames to verify replay: {frames}")
+
+    replayed = read_sse_frames_until(str(conversation["conversation_id"]), last_event_id=str(frames[0]["id"]))
+    replayed_types = [str(frame["data"]["type"]) for frame in replayed]
+    if "RUN_STARTED" in replayed_types:
+        raise RuntimeError(f"replay returned already acknowledged event; saw {replayed_types}")
+    if "RUN_FINISHED" not in replayed_types:
+        raise RuntimeError(f"replay did not reach run finish; saw {replayed_types}")
+    if replayed and replayed[0]["id"] == frames[0]["id"]:
+        raise RuntimeError(f"replay did not advance past Last-Event-ID: {replayed}")
+    return replayed_types
 
 
 def run_cancel_case() -> list[str]:
@@ -121,6 +171,7 @@ def main() -> None:
         raise RuntimeError("no capabilities returned")
     print("capabilities ok")
     print("normal", run_case(bridge=False))
+    print("replay", run_replay_case())
     print("bridge", run_case(bridge=True))
     print("cancel", run_cancel_case())
 
