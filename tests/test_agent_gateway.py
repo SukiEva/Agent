@@ -4,11 +4,13 @@ import asyncio
 import sys
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT / "apps" / "agent-gateway" / "src"))
 
 from agent_core.schemas.agent import AgentRef  # noqa: E402
-from agent_gateway.main import _probe_agent  # noqa: E402
+from agent_gateway.main import _probe_agent, create_app  # noqa: E402
 
 
 class FakeResponse:
@@ -41,6 +43,45 @@ class FakeAsyncClient:
         if self.error:
             raise self.error
         return FakeResponse(self.payload)
+
+
+class FakeStreamResponse:
+    status_code = 200
+    body = b""
+    chunks: list[bytes] = []
+    headers = {"content-type": "application/x-ndjson"}
+    reason_phrase = "OK"
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def aread(self) -> bytes:
+        return self.body
+
+    async def aiter_bytes(self):
+        for chunk in self.chunks:
+            yield chunk
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+class FakeRoutingAsyncClient:
+    response = FakeStreamResponse
+    closed = False
+
+    def __init__(self, **_kwargs: object) -> None:
+        self.response_instance = self.response()
+
+    def build_request(self, method: str, url: str, json: dict[str, object]) -> dict[str, object]:
+        return {"method": method, "url": url, "json": json}
+
+    async def send(self, _request: dict[str, object], stream: bool = False) -> FakeStreamResponse:
+        assert stream is True
+        return self.response_instance
+
+    async def aclose(self) -> None:
+        self.__class__.closed = True
 
 
 def test_probe_agent_enriches_capabilities_from_agent_card() -> None:
@@ -100,7 +141,60 @@ async def _test_probe_agent_marks_unhealthy_on_card_failure() -> None:
     assert "card unavailable" in str(dumped["last_error"])
 
 
+def test_create_task_streams_downstream_response() -> None:
+    import httpx
+
+    class OkResponse(FakeStreamResponse):
+        status_code = 200
+        chunks = [b'{"type":"one"}\n', b'{"type":"two"}\n']
+
+    FakeRoutingAsyncClient.response = OkResponse
+    FakeRoutingAsyncClient.closed = False
+    original = httpx.AsyncClient
+    httpx.AsyncClient = FakeRoutingAsyncClient  # type: ignore[assignment]
+    try:
+        app = create_app()
+        app.state.registry = {
+            "demo_business_agent": AgentRef(agent_id="demo_business_agent", role="business", base_url="http://agent")
+        }
+        response = TestClient(app).post("/a2a/demo_business_agent/tasks", json={"task_id": "task_1"})
+    finally:
+        httpx.AsyncClient = original  # type: ignore[assignment]
+
+    assert response.status_code == 200
+    assert response.text == '{"type":"one"}\n{"type":"two"}\n'
+    assert FakeRoutingAsyncClient.closed is True
+
+
+def test_create_task_preserves_downstream_error_status() -> None:
+    import httpx
+
+    class ErrorResponse(FakeStreamResponse):
+        status_code = 503
+        body = b"agent unavailable"
+        reason_phrase = "Service Unavailable"
+
+    FakeRoutingAsyncClient.response = ErrorResponse
+    FakeRoutingAsyncClient.closed = False
+    original = httpx.AsyncClient
+    httpx.AsyncClient = FakeRoutingAsyncClient  # type: ignore[assignment]
+    try:
+        app = create_app()
+        app.state.registry = {
+            "demo_business_agent": AgentRef(agent_id="demo_business_agent", role="business", base_url="http://agent")
+        }
+        response = TestClient(app).post("/a2a/demo_business_agent/tasks", json={"task_id": "task_1"})
+    finally:
+        httpx.AsyncClient = original  # type: ignore[assignment]
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "agent unavailable"
+    assert FakeRoutingAsyncClient.closed is True
+
+
 if __name__ == "__main__":
     test_probe_agent_enriches_capabilities_from_agent_card()
     test_probe_agent_marks_unhealthy_on_card_failure()
+    test_create_task_streams_downstream_response()
+    test_create_task_preserves_downstream_error_status()
     print("agent gateway tests ok")

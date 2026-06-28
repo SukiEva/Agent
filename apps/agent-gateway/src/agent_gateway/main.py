@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 
 from agent_core.config import load_service_config
 from agent_core.logging import configure_service_logging
@@ -72,20 +73,32 @@ def create_app() -> FastAPI:
         if not agent_ref:
             raise HTTPException(status_code=404, detail="agent not found")
         payload = await request.json()
+        import httpx
+
+        client = httpx.AsyncClient(timeout=None, trust_env=False)
+        try:
+            downstream_request = client.build_request("POST", f"{agent_ref.base_url}/a2a/tasks", json=payload)
+            response = await client.send(downstream_request, stream=True)
+        except Exception:
+            await client.aclose()
+            raise
+
+        if response.status_code >= 400:
+            body = await response.aread()
+            await response.aclose()
+            await client.aclose()
+            detail = body.decode("utf-8", errors="replace") or response.reason_phrase
+            raise HTTPException(status_code=response.status_code, detail=detail)
 
         async def stream():
-            import httpx
+            try:
+                async for chunk in response.aiter_bytes():
+                    yield chunk
+            finally:
+                await response.aclose()
 
-            async with httpx.AsyncClient(timeout=None, trust_env=False) as client:
-                async with client.stream("POST", f"{agent_ref.base_url}/a2a/tasks", json=payload) as response:
-                    if response.status_code >= 400:
-                        body = await response.aread()
-                        yield body
-                        return
-                    async for chunk in response.aiter_bytes():
-                        yield chunk
-
-        return StreamingResponse(stream(), media_type="application/x-ndjson")
+        media_type = response.headers.get("content-type", "application/x-ndjson")
+        return StreamingResponse(stream(), media_type=media_type, background=BackgroundTask(client.aclose))
 
     @app.post("/a2a/{agent_id}/tasks/{task_id}/cancel")
     async def cancel_task(agent_id: str, task_id: str) -> dict[str, object]:
