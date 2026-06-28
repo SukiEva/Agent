@@ -18,6 +18,29 @@
         "type": "string"
       },
       "default": []
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file_id", "name"],
+        "properties": {
+          "file_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": ["string", "null"]
+          },
+          "size_bytes": {
+            "type": ["integer", "null"]
+          }
+        }
+      },
+      "default": []
     }
   }
 }

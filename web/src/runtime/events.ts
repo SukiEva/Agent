@@ -25,11 +25,20 @@ export type ToolCall = {
 export type UiRender = {
   component: string;
   component_version: string;
-  props: Record<string, unknown>;
+  props: Record<string, unknown> & {
+    attachments?: AttachmentSummary[];
+  };
   fallback?: {
     component: string;
     props: Record<string, unknown>;
   };
+};
+
+export type AttachmentSummary = {
+  file_id: string;
+  name: string;
+  mime_type?: string | null;
+  size_bytes?: number | null;
 };
 
 export type RuntimeState = {

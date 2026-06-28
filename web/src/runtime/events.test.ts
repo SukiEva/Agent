@@ -31,7 +31,12 @@ function testNormalRunEvents() {
     value: {
       component: "demo.result_card",
       component_version: "v1",
-      props: { title: "Demo", summary: "Done", items: ["A"] },
+      props: {
+        title: "Demo",
+        summary: "Done",
+        items: ["A"],
+        attachments: [{ file_id: "file_1", name: "smoke.txt", size_bytes: 16 }],
+      },
     },
   });
   applyAgUiEvent(state, { type: "RUN_FINISHED" });
@@ -42,6 +47,10 @@ function testNormalRunEvents() {
   assertEqual(state.messages[0].content, "hello world");
   assertEqual(state.messages[0].complete, true);
   assertEqual(state.uiRenders[0].component, "demo.result_card");
+  assertDeepEqual(
+    state.uiRenders[0].props.attachments,
+    [{ file_id: "file_1", name: "smoke.txt", size_bytes: 16 }],
+  );
 }
 
 function testBridgeEventsReturnExecutionEffect() {

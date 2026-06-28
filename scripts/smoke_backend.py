@@ -22,6 +22,32 @@ def request(method: str, path: str, body: dict[str, Any] | None = None) -> dict[
     return json.loads(data or b"{}")
 
 
+def upload_file(name: str, content: bytes, mime_type: str = "text/plain") -> dict[str, Any]:
+    boundary = "agent-smoke-boundary"
+    body = b"".join(
+        [
+            f"--{boundary}\r\n".encode(),
+            f'Content-Disposition: form-data; name="file"; filename="{name}"\r\n'.encode(),
+            f"Content-Type: {mime_type}\r\n\r\n".encode(),
+            content,
+            f"\r\n--{boundary}--\r\n".encode(),
+        ]
+    )
+    conn = http.client.HTTPConnection("localhost", 8000, timeout=10)
+    conn.request(
+        "POST",
+        "/api/files",
+        body=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    response = conn.getresponse()
+    data = response.read()
+    conn.close()
+    if response.status >= 400:
+        raise RuntimeError(f"POST /api/files failed {response.status}: {data.decode()}")
+    return json.loads(data or b"{}")
+
+
 def read_sse_until(
     conversation_id: str,
     stop_type: str = "RUN_FINISHED",
@@ -138,6 +164,42 @@ def run_replay_case() -> list[str]:
     return replayed_types
 
 
+def run_attachment_case() -> list[str]:
+    uploaded = upload_file("smoke.txt", b"attachment smoke")
+    conversation = request("POST", "/api/conversations")
+    assert isinstance(conversation, dict)
+    run = request(
+        "POST",
+        "/api/runs",
+        {
+            "conversation_id": conversation["conversation_id"],
+            "client_id": conversation["client_id"],
+            "message": {"type": "text", "content": "run attachment demo"},
+            "selected_agent_id": "demo_business_agent",
+            "attachments": [uploaded],
+            "context": {},
+        },
+    )
+    assert isinstance(run, dict)
+    events = read_sse_until(str(conversation["conversation_id"]))
+    ui_events = [
+        event
+        for event in events
+        if event.get("type") == "CUSTOM" and event.get("name") == "ui.component.render"
+    ]
+    if not ui_events:
+        raise RuntimeError(f"missing ui render event for attachment case; saw {events}")
+    ui_value = ui_events[-1]["value"]
+    attachments = ui_value.get("props", {}).get("attachments", [])
+    if not attachments:
+        raise RuntimeError(f"missing attachments in ui render; saw {ui_value}")
+    echoed = attachments[0]
+    for key in ("file_id", "name", "size_bytes"):
+        if echoed.get(key) != uploaded.get(key):
+            raise RuntimeError(f"attachment {key} mismatch: uploaded={uploaded}, echoed={echoed}")
+    return [str(event["type"]) for event in events]
+
+
 def run_cancel_case() -> list[str]:
     conversation = request("POST", "/api/conversations")
     assert isinstance(conversation, dict)
@@ -172,6 +234,7 @@ def main() -> None:
     print("capabilities ok")
     print("normal", run_case(bridge=False))
     print("replay", run_replay_case())
+    print("attachment", run_attachment_case())
     print("bridge", run_case(bridge=True))
     print("cancel", run_cancel_case())
 

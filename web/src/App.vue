@@ -299,6 +299,14 @@ function errorMessage(unknownError: unknown): string {
                 <ul>
                   <li v-for="item in (render.props.items as string[])" :key="item">{{ item }}</li>
                 </ul>
+                <div v-if="render.props.attachments?.length" class="attachment-summary">
+                  <span>Attachments</span>
+                  <ul>
+                    <li v-for="attachment in render.props.attachments" :key="attachment.file_id">
+                      {{ attachment.name }} <small>{{ attachment.file_id }}</small>
+                    </li>
+                  </ul>
+                </div>
               </template>
               <template v-else>
                 <strong>{{ render.fallback?.component ?? render.component }}</strong>
@@ -573,6 +581,19 @@ li span {
 .result-card p {
   margin-top: 6px;
   line-height: 1.55;
+}
+
+.attachment-summary {
+  margin-top: 10px;
+}
+
+.attachment-summary ul {
+  padding-left: 18px;
+}
+
+.attachment-summary small {
+  color: #687385;
+  font-size: 11px;
 }
 
 .tool-call {

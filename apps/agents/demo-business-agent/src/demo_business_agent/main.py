@@ -89,6 +89,7 @@ def create_app() -> FastAPI:
             if _is_cancelled(app, task_id):
                 yield json_line(_cancelled_event(agent_id, run_id, task_id))
                 return
+            attachments = _attachment_summaries(payload)
             envelope = BusinessResultEnvelope(
                 status="completed",
                 agent_id=agent_id,
@@ -99,6 +100,7 @@ def create_app() -> FastAPI:
                     "summary": f"Processed: {payload['user_message']['content']}",
                     "items": ["A2A routing worked", "SSE replay path is ready", "UI descriptor delivered"],
                     "bridge_result": bridge_result,
+                    "attachments": attachments,
                 },
                 ui=UiDescriptor(
                     component="demo.result_card",
@@ -107,6 +109,7 @@ def create_app() -> FastAPI:
                         "title": "Demo Result",
                         "summary": f"Processed: {payload['user_message']['content']}",
                         "items": ["A2A routing worked", "SSE replay path is ready", "UI descriptor delivered"],
+                        "attachments": attachments,
                     },
                     fallback=UiFallback(
                         component="common.markdown",
@@ -129,6 +132,25 @@ def create_app() -> FastAPI:
 
 def _is_cancelled(app: FastAPI, task_id: str) -> bool:
     return task_id in app.state.cancelled_tasks
+
+
+def _attachment_summaries(payload: dict[str, Any]) -> list[dict[str, object]]:
+    attachments = payload.get("attachments", [])
+    if not isinstance(attachments, list):
+        return []
+    summaries: list[dict[str, object]] = []
+    for attachment in attachments:
+        if not isinstance(attachment, dict) or "file_id" not in attachment:
+            continue
+        summaries.append(
+            {
+                "file_id": str(attachment["file_id"]),
+                "name": str(attachment.get("name") or ""),
+                "mime_type": attachment.get("mime_type"),
+                "size_bytes": attachment.get("size_bytes"),
+            }
+        )
+    return summaries
 
 
 def _start_command_listener(app: FastAPI) -> None:
