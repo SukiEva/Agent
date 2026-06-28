@@ -90,26 +90,31 @@ async function startRun() {
   if (!conversation.value || !canRun.value) return;
   resetRuntimeState(runtimeState);
   runtimeState.isRunning = true;
-  const response = await post<{ run_id: string; root_task_id: string }>("/api/runs", {
-    conversation_id: conversation.value.conversation_id,
-    client_id: conversation.value.client_id,
-    message: {
-      type: "text",
-      content: input.value,
-    },
-    selected_agent_id: selectedAgentId.value || null,
-    attachments: attachments.value,
-    context: bridgeEnabled.value
-      ? {
-          bridge: {
-            enabled: true,
-            action_name: "get_selected_text",
-            timeout_ms: 30000,
-          },
-        }
-      : {},
-  });
-  runtimeState.runId = response.run_id;
+  try {
+    const response = await post<{ run_id: string; root_task_id: string }>("/api/runs", {
+      conversation_id: conversation.value.conversation_id,
+      client_id: conversation.value.client_id,
+      message: {
+        type: "text",
+        content: input.value,
+      },
+      selected_agent_id: selectedAgentId.value || null,
+      attachments: attachments.value,
+      context: bridgeEnabled.value
+        ? {
+            bridge: {
+              enabled: true,
+              action_name: "get_selected_text",
+              timeout_ms: 30000,
+            },
+          }
+        : {},
+    });
+    runtimeState.runId = response.run_id;
+  } catch (unknownError) {
+    runtimeState.isRunning = false;
+    runtimeState.error = errorMessage(unknownError);
+  }
 }
 
 async function uploadAttachment(event: Event) {
@@ -140,8 +145,12 @@ function removeAttachment(fileId: string) {
 
 async function cancelRun() {
   if (!runtimeState.runId) return;
-  await post(`/api/runs/${runtimeState.runId}/cancel`, {});
-  runtimeState.isRunning = false;
+  try {
+    await post(`/api/runs/${runtimeState.runId}/cancel`, {});
+    runtimeState.isRunning = false;
+  } catch (unknownError) {
+    runtimeState.error = errorMessage(unknownError);
+  }
 }
 
 function handleEvent(event: AgUiEvent) {
