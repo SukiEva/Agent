@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     app.state.settings = _settings()
     configure_service_logging(app.state.settings)
     app.state.registry = _load_registry()
+    app.state.agent_probe_cache = {}
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -58,14 +60,14 @@ def create_app() -> FastAPI:
 
     @app.get("/agents")
     async def agents() -> list[dict[str, object]]:
-        return [await _probe_agent(agent) for agent in app.state.registry.values()]
+        return [await _cached_probe_agent(app, agent) for agent in app.state.registry.values()]
 
     @app.get("/agents/{agent_id}")
     async def agent(agent_id: str) -> dict[str, object]:
         agent_ref = app.state.registry.get(agent_id)
         if not agent_ref:
             raise HTTPException(status_code=404, detail="agent not found")
-        return await _probe_agent(agent_ref)
+        return await _cached_probe_agent(app, agent_ref)
 
     @app.post("/a2a/{agent_id}/tasks")
     async def create_task(agent_id: str, request: Request) -> StreamingResponse:
@@ -118,6 +120,27 @@ def _dump_agent(agent: AgentRef) -> dict[str, object]:
     if hasattr(agent, "model_dump"):
         return agent.model_dump(mode="json")
     return agent.dict()
+
+
+async def _cached_probe_agent(app: FastAPI, agent: AgentRef) -> dict[str, object]:
+    ttl_seconds = _probe_cache_ttl_seconds(app.state.settings)
+    if ttl_seconds <= 0:
+        return await _probe_agent(agent)
+    cache: dict[str, tuple[float, dict[str, object]]] = app.state.agent_probe_cache
+    cached = cache.get(agent.agent_id)
+    now = monotonic()
+    if cached and cached[0] > now:
+        return dict(cached[1])
+    dumped = await _probe_agent(agent)
+    cache[agent.agent_id] = (now + ttl_seconds, dumped)
+    return dict(dumped)
+
+
+def _probe_cache_ttl_seconds(settings: dict[str, Any]) -> float:
+    registry = settings.get("registry", {})
+    if not isinstance(registry, dict):
+        return 0
+    return float(registry.get("probe_cache_ttl_seconds", 5))
 
 
 async def _probe_agent(agent: AgentRef) -> dict[str, object]:

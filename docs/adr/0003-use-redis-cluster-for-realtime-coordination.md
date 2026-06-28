@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-Agent Server and Agent services can run multiple instances behind load balancers. SSE holders, client bridge actions, task owners, and cancellation commands require cross-instance coordination.
+Agent Server and Agent services can run multiple instances behind load balancers. SSE holders, client bridge actions, running task state, and cancellation commands require cross-instance coordination.
 
 The product does not require long-term chat history in the MVP.
 
@@ -20,14 +20,13 @@ Redis stores:
 - Online session and connection state.
 - Client action state and results.
 - Run and task status.
-- Task owner instance metadata.
-- Per-instance command streams.
+- Per-agent command streams for cancellation.
 
 ## Consequences
 
 - Multi-instance coordination does not require sticky HTTP routing.
 - Bridge actions can wait using Redis blocking reads.
-- Cancellation reaches owner instances through Redis commands.
+- Cancellation is broadcast through per-agent Redis command streams; only the instance holding the local task acts on a matching task ID.
 - Redis data loss recovery is out of scope for the MVP.
 
 ## Rejected Alternatives

@@ -29,6 +29,7 @@ class FakeResponse:
 class FakeAsyncClient:
     payload: dict[str, object] = {}
     error: Exception | None = None
+    calls = 0
 
     def __init__(self, **_kwargs: object) -> None:
         pass
@@ -40,6 +41,7 @@ class FakeAsyncClient:
         return None
 
     async def get(self, _url: str) -> FakeResponse:
+        self.__class__.calls += 1
         if self.error:
             raise self.error
         return FakeResponse(self.payload)
@@ -192,9 +194,76 @@ def test_create_task_preserves_downstream_error_status() -> None:
     assert FakeRoutingAsyncClient.closed is True
 
 
+def test_agents_endpoint_caches_agent_card_probe() -> None:
+    import httpx
+
+    original = httpx.AsyncClient
+    FakeAsyncClient.error = None
+    FakeAsyncClient.calls = 0
+    FakeAsyncClient.payload = {
+        "name": "Demo Business Agent",
+        "skills": [{"id": "demo_task", "description": "Runs a demo task."}],
+    }
+    httpx.AsyncClient = FakeAsyncClient  # type: ignore[assignment]
+    try:
+        app = create_app()
+        app.state.settings["registry"]["probe_cache_ttl_seconds"] = 60
+        app.state.registry = {
+            "demo_business_agent": AgentRef(
+                agent_id="demo_business_agent",
+                role="business",
+                base_url="http://agent",
+                card_url="http://agent/.well-known/agent-card.json",
+            )
+        }
+        client = TestClient(app)
+        first = client.get("/agents")
+        second = client.get("/agents")
+    finally:
+        httpx.AsyncClient = original  # type: ignore[assignment]
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json()
+    assert FakeAsyncClient.calls == 1
+
+
+def test_agents_endpoint_can_disable_agent_card_probe_cache() -> None:
+    import httpx
+
+    original = httpx.AsyncClient
+    FakeAsyncClient.error = None
+    FakeAsyncClient.calls = 0
+    FakeAsyncClient.payload = {
+        "name": "Demo Business Agent",
+        "skills": [{"id": "demo_task", "description": "Runs a demo task."}],
+    }
+    httpx.AsyncClient = FakeAsyncClient  # type: ignore[assignment]
+    try:
+        app = create_app()
+        app.state.settings["registry"]["probe_cache_ttl_seconds"] = 0
+        app.state.registry = {
+            "demo_business_agent": AgentRef(
+                agent_id="demo_business_agent",
+                role="business",
+                base_url="http://agent",
+                card_url="http://agent/.well-known/agent-card.json",
+            )
+        }
+        client = TestClient(app)
+        client.get("/agents")
+        client.get("/agents")
+    finally:
+        httpx.AsyncClient = original  # type: ignore[assignment]
+
+    assert FakeAsyncClient.calls == 2
+
+
 if __name__ == "__main__":
     test_probe_agent_enriches_capabilities_from_agent_card()
     test_probe_agent_marks_unhealthy_on_card_failure()
     test_create_task_streams_downstream_response()
     test_create_task_preserves_downstream_error_status()
+    test_agents_endpoint_caches_agent_card_probe()
+    test_agents_endpoint_can_disable_agent_card_probe_cache()
     print("agent gateway tests ok")

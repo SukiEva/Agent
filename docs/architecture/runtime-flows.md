@@ -104,11 +104,11 @@ Vue
   -> Agent Gateway cancel master task
   -> master_agent cancels active business task
   -> Agent Gateway cancel business task
-  -> Redis per-instance command stream
-  -> owner agent instance calls asyncio.Task.cancel()
+  -> Redis per-agent command stream
+  -> instance holding the local task calls asyncio.Task.cancel()
 ```
 
-When requests land on arbitrary instances behind an ALB, cancellation is not routed by HTTP to a specific instance. The owner instance listens for Redis commands and cancels its local task.
+When requests land on arbitrary instances behind an ALB, cancellation is not routed by HTTP to a specific instance. Every live instance of the target agent listens to the per-agent command stream; only the instance that owns the local task for the task ID cancels anything.
 
 ## SSE Reconnect
 

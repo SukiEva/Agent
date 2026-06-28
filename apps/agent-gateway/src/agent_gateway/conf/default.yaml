@@ -7,3 +7,4 @@ server:
 
 registry:
   path: agents.dev.yaml
+  probe_cache_ttl_seconds: 5
