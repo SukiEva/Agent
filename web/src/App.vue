@@ -29,6 +29,8 @@ type AttachmentRef = {
 };
 
 const apiBase = import.meta.env.VITE_AGENT_SERVER_URL ?? "http://localhost:8000";
+const userId = import.meta.env.VITE_AGENT_USER_ID ?? "";
+const tenantId = import.meta.env.VITE_AGENT_TENANT_ID ?? "";
 
 const conversation = ref<Conversation | null>(null);
 const capabilities = ref<Capability[]>([]);
@@ -70,7 +72,9 @@ function connectEvents() {
   if (!conversation.value) return;
   source?.close();
   status.value = "connecting";
-  source = new EventSource(`${apiBase}/api/conversations/${conversation.value.conversation_id}/events`);
+  source = new EventSource(
+    `${apiBase}/api/conversations/${conversation.value.conversation_id}/events${authQueryString()}`,
+  );
   source.onopen = () => {
     status.value = "connected";
   };
@@ -118,6 +122,7 @@ async function uploadAttachment(event: Event) {
     formData.append("file", file);
     const response = await fetch(`${apiBase}/api/files`, {
       method: "POST",
+      headers: authHeaders(),
       body: formData,
     });
     if (!response.ok) throw new Error(await response.text());
@@ -184,16 +189,19 @@ async function executeBridgeTool(toolCall: ToolCall): Promise<Record<string, unk
 }
 
 async function get<T>(path: string): Promise<T> {
-  const response = await fetch(`${apiBase}${path}`);
+  const response = await fetch(`${apiBase}${path}${authQueryString(path)}`, {
+    headers: authHeaders(),
+  });
   if (!response.ok) throw new Error(await response.text());
   return (await response.json()) as T;
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${apiBase}${path}`, {
+  const response = await fetch(`${apiBase}${path}${authQueryString(path)}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...authHeaders(),
     },
     body: JSON.stringify(body),
   });
@@ -203,6 +211,22 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 
 function errorMessage(unknownError: unknown): string {
   return unknownError instanceof Error ? unknownError.message : String(unknownError);
+}
+
+function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (userId) headers["x-user-id"] = userId;
+  if (tenantId) headers["x-tenant-id"] = tenantId;
+  return headers;
+}
+
+function authQueryString(path = ""): string {
+  if (!userId && !tenantId) return "";
+  const separator = path.includes("?") ? "&" : "?";
+  const params = new URLSearchParams();
+  if (userId) params.set("user_id", userId);
+  if (tenantId) params.set("tenant_id", tenantId);
+  return `${separator}${params.toString()}`;
 }
 </script>
 

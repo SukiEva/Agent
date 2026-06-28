@@ -206,9 +206,39 @@ def _capability_from_agent(agent: dict[str, Any]) -> dict[str, object]:
 
 async def _authenticate_user(app: FastAPI, request: Request) -> None:
     try:
-        await app.state.user_auth.authenticate(request.headers)
+        await app.state.user_auth.authenticate(_user_auth_headers(app, request))
     except AuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+def _user_auth_headers(app: FastAPI, request: Request) -> dict[str, str]:
+    headers = {key.lower(): value for key, value in request.headers.items()}
+    auth_settings = app.state.settings.get("auth", {}).get("user", {})
+    if not isinstance(auth_settings, dict):
+        return headers
+    for header_name in (
+        str(auth_settings.get("user_header", "x-user-id")).lower(),
+        str(auth_settings.get("tenant_header", "x-tenant-id")).lower(),
+    ):
+        if header_name in headers:
+            continue
+        query_value = _query_auth_value(request, header_name)
+        if query_value:
+            headers[header_name] = query_value
+    return headers
+
+
+def _query_auth_value(request: Request, header_name: str) -> str | None:
+    candidates = (
+        header_name,
+        header_name.replace("-", "_"),
+        header_name.removeprefix("x-").replace("-", "_"),
+    )
+    for candidate in candidates:
+        value = request.query_params.get(candidate)
+        if value:
+            return value
+    return None
 
 
 async def _authenticate_internal(app: FastAPI, request: Request) -> None:

@@ -71,6 +71,13 @@ AGENT_INTERNAL_AUTH_MODE=shared_secret
 AGENT_INTERNAL_AUTH_SECRET=dev-secret
 ```
 
+For browser validation with header-style user auth, set frontend identity env vars. The app sends headers on `fetch` requests and query identity on SSE because native `EventSource` cannot set custom headers:
+
+```bash
+VITE_AGENT_USER_ID=dev-user
+VITE_AGENT_TENANT_ID=dev-tenant
+```
+
 Files are stored through the local FileStore by default:
 
 ```bash

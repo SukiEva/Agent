@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
 import time
+from urllib.parse import urlencode
 from typing import Any
 
 
@@ -13,6 +15,7 @@ def request(method: str, path: str, body: dict[str, Any] | None = None) -> dict[
     conn = http.client.HTTPConnection("localhost", 8000, timeout=10)
     payload = json.dumps(body).encode() if body is not None else None
     headers = {"Content-Type": "application/json"} if body is not None else {}
+    headers.update(user_auth_headers())
     conn.request(method, path, body=payload, headers=headers)
     response = conn.getresponse()
     data = response.read()
@@ -38,7 +41,7 @@ def upload_file(name: str, content: bytes, mime_type: str = "text/plain") -> dic
         "POST",
         "/api/files",
         body=body,
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}", **user_auth_headers()},
     )
     response = conn.getresponse()
     data = response.read()
@@ -65,7 +68,7 @@ def read_sse_frames_until(
 ) -> list[SseFrame]:
     conn = http.client.HTTPConnection("localhost", 8000, timeout=10)
     headers = {"Last-Event-ID": last_event_id} if last_event_id else {}
-    conn.request("GET", f"/api/conversations/{conversation_id}/events", headers=headers)
+    conn.request("GET", f"/api/conversations/{conversation_id}/events{user_auth_query()}", headers=headers)
     response = conn.getresponse()
     if response.status != 200:
         raise RuntimeError(f"SSE failed {response.status}")
@@ -101,6 +104,28 @@ def read_sse_frames_until(
             current.append(line.rstrip("\n"))
     conn.close()
     return frames
+
+
+def user_auth_headers() -> dict[str, str]:
+    headers: dict[str, str] = {}
+    user_id = os.environ.get("AGENT_SMOKE_USER_ID", "")
+    tenant_id = os.environ.get("AGENT_SMOKE_TENANT_ID", "")
+    if user_id:
+        headers["x-user-id"] = user_id
+    if tenant_id:
+        headers["x-tenant-id"] = tenant_id
+    return headers
+
+
+def user_auth_query() -> str:
+    params: dict[str, str] = {}
+    user_id = os.environ.get("AGENT_SMOKE_USER_ID", "")
+    tenant_id = os.environ.get("AGENT_SMOKE_TENANT_ID", "")
+    if user_id:
+        params["user_id"] = user_id
+    if tenant_id:
+        params["tenant_id"] = tenant_id
+    return f"?{urlencode(params)}" if params else ""
 
 
 def run_case(*, bridge: bool) -> list[str]:
