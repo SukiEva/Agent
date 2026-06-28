@@ -65,7 +65,7 @@ def create_app() -> FastAPI:
 
         async def stream():
             task_id = str(payload["task_id"])
-            target_agent_id = payload.get("selected_agent_id") or await _choose_default_business_agent(app)
+            target_agent_id = await _choose_business_agent(app, payload)
             if not target_agent_id:
                 message_id = new_message_id()
                 yield json_line(agui_text_start(message_id))
@@ -110,17 +110,64 @@ def create_app() -> FastAPI:
     return app
 
 
-async def _choose_default_business_agent(app: FastAPI) -> str | None:
+async def _choose_business_agent(app: FastAPI, payload: dict[str, Any]) -> str | None:
+    selected_agent_id = payload.get("selected_agent_id")
+    if selected_agent_id:
+        return str(selected_agent_id)
+    agents = await _load_business_agents(app)
+    return _select_business_agent(agents, _user_message_text(payload))
+
+
+async def _load_business_agents(app: FastAPI) -> list[dict[str, Any]]:
     import httpx
 
     gateway_base_url = app.state.settings["gateway"]["base_url"]
     async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
         response = await client.get(f"{gateway_base_url}/agents")
         response.raise_for_status()
-    for agent in response.json():
-        if agent.get("role") == "business" and agent.get("visibility") == "public" and agent.get("healthy", True):
-            return str(agent["agent_id"])
-    return None
+    return [
+        agent
+        for agent in response.json()
+        if agent.get("role") == "business" and agent.get("visibility") == "public" and agent.get("healthy", True)
+    ]
+
+
+def _select_business_agent(agents: list[dict[str, Any]], user_message: str) -> str | None:
+    if not agents:
+        return None
+    message_tokens = _tokens(user_message)
+    scored = [(_agent_match_score(agent, message_tokens), index, agent) for index, agent in enumerate(agents)]
+    best_score, _, best_agent = max(scored, key=lambda item: (item[0], -item[1]))
+    if best_score > 0:
+        return str(best_agent["agent_id"])
+    return str(agents[0]["agent_id"])
+
+
+def _agent_match_score(agent: dict[str, Any], message_tokens: set[str]) -> int:
+    agent_tokens = _tokens(str(agent.get("agent_id", "")))
+    display = agent.get("display") or {}
+    if isinstance(display, dict):
+        agent_tokens |= _tokens(str(display.get("label", "")))
+        agent_tokens |= _tokens(str(display.get("description", "")))
+    for capability in agent.get("capabilities", []) or []:
+        if not isinstance(capability, dict):
+            continue
+        agent_tokens |= _tokens(str(capability.get("name", "")))
+        agent_tokens |= _tokens(str(capability.get("description", "")))
+    return len(message_tokens & agent_tokens)
+
+
+def _tokens(text: str) -> set[str]:
+    return {token for token in text.lower().replace("_", " ").replace("-", " ").split() if len(token) >= 3}
+
+
+def _user_message_text(payload: dict[str, Any]) -> str:
+    message = payload.get("user_message")
+    if isinstance(message, dict):
+        content = message.get("content")
+        if content is not None:
+            return str(content)
+    return str(message or "")
 
 
 async def _cancel_business_task(app: FastAPI, target_agent_id: str, task_id: str) -> None:
