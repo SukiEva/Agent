@@ -37,3 +37,5 @@ bun run web:dev
 ```
 
 The frontend is a validation shell. It is expected to consume AG-UI-compatible SSE events from Agent Server.
+
+Set `VITE_AGENT_SERVER_URL` if Agent Server is not running on `http://localhost:8000`.

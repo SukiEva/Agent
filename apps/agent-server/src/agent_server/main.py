@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from agent_core.config import load_service_config
@@ -36,6 +37,13 @@ def _settings() -> dict[str, Any]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Agent Server")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.state.settings = _settings()
     app.state.stores = RuntimeStores()
 

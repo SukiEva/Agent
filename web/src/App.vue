@@ -1,15 +1,622 @@
+<script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+
+type Capability = {
+  agent_id: string;
+  label: string;
+  description: string;
+  available: boolean;
+};
+
+type Conversation = {
+  conversation_id: string;
+  client_id: string;
+};
+
+type AgUiEvent = {
+  type: string;
+  [key: string]: unknown;
+};
+
+type Message = {
+  id: string;
+  role: string;
+  content: string;
+  complete: boolean;
+};
+
+type ProgressEvent = {
+  agentId: string;
+  message: string;
+};
+
+type ToolCall = {
+  id: string;
+  name: string;
+  args: string;
+  status: "pending" | "running" | "completed" | "failed";
+};
+
+type UiRender = {
+  component: string;
+  component_version: string;
+  props: Record<string, unknown>;
+  fallback?: {
+    component: string;
+    props: Record<string, unknown>;
+  };
+};
+
+const apiBase = import.meta.env.VITE_AGENT_SERVER_URL ?? "http://localhost:8000";
+
+const conversation = ref<Conversation | null>(null);
+const capabilities = ref<Capability[]>([]);
+const selectedAgentId = ref("");
+const input = ref("run demo task");
+const bridgeEnabled = ref(false);
+const isRunning = ref(false);
+const status = ref("disconnected");
+const runId = ref<string | null>(null);
+const messages = ref<Message[]>([]);
+const progressEvents = ref<ProgressEvent[]>([]);
+const toolCalls = ref<ToolCall[]>([]);
+const uiRenders = ref<UiRender[]>([]);
+const error = ref<string | null>(null);
+
+let source: EventSource | null = null;
+
+const canRun = computed(() => conversation.value && input.value.trim() && !isRunning.value);
+
+onMounted(async () => {
+  await bootstrap();
+});
+
+onBeforeUnmount(() => {
+  source?.close();
+});
+
+async function bootstrap() {
+  try {
+    conversation.value = await post<Conversation>("/api/conversations", {});
+    await loadCapabilities();
+    connectEvents();
+  } catch (unknownError) {
+    error.value = errorMessage(unknownError);
+  }
+}
+
+async function loadCapabilities() {
+  capabilities.value = await get<Capability[]>("/api/capabilities");
+  selectedAgentId.value = capabilities.value.find((capability) => capability.available)?.agent_id ?? "";
+}
+
+function connectEvents() {
+  if (!conversation.value) return;
+  source?.close();
+  status.value = "connecting";
+  source = new EventSource(`${apiBase}/api/conversations/${conversation.value.conversation_id}/events`);
+  source.onopen = () => {
+    status.value = "connected";
+  };
+  source.onerror = () => {
+    status.value = "reconnecting";
+  };
+  source.onmessage = (event) => {
+    handleEvent(JSON.parse(event.data) as AgUiEvent);
+  };
+}
+
+async function startRun() {
+  if (!conversation.value || !canRun.value) return;
+  error.value = null;
+  isRunning.value = true;
+  progressEvents.value = [];
+  toolCalls.value = [];
+  uiRenders.value = [];
+  messages.value = [];
+  const response = await post<{ run_id: string; root_task_id: string }>("/api/runs", {
+    conversation_id: conversation.value.conversation_id,
+    client_id: conversation.value.client_id,
+    message: {
+      type: "text",
+      content: input.value,
+    },
+    selected_agent_id: selectedAgentId.value || null,
+    attachments: [],
+    context: bridgeEnabled.value
+      ? {
+          bridge: {
+            enabled: true,
+            action_name: "get_selected_text",
+            timeout_ms: 30000,
+          },
+        }
+      : {},
+  });
+  runId.value = response.run_id;
+}
+
+async function cancelRun() {
+  if (!runId.value) return;
+  await post(`/api/runs/${runId.value}/cancel`, {});
+  isRunning.value = false;
+}
+
+function handleEvent(event: AgUiEvent) {
+  switch (event.type) {
+    case "RUN_STARTED":
+      isRunning.value = true;
+      runId.value = String(event.runId);
+      break;
+    case "RUN_FINISHED":
+      isRunning.value = false;
+      break;
+    case "RUN_ERROR":
+      isRunning.value = false;
+      error.value = String(event.message ?? "Run failed");
+      break;
+    case "TEXT_MESSAGE_START":
+      messages.value.push({
+        id: String(event.messageId),
+        role: String(event.role ?? "assistant"),
+        content: "",
+        complete: false,
+      });
+      break;
+    case "TEXT_MESSAGE_CONTENT":
+      appendMessageDelta(String(event.messageId), String(event.delta ?? ""));
+      break;
+    case "TEXT_MESSAGE_END":
+      completeMessage(String(event.messageId));
+      break;
+    case "CUSTOM":
+      handleCustomEvent(event);
+      break;
+    case "TOOL_CALL_START":
+      toolCalls.value.push({
+        id: String(event.toolCallId),
+        name: String(event.toolCallName),
+        args: "",
+        status: "pending",
+      });
+      break;
+    case "TOOL_CALL_ARGS":
+      updateToolCall(String(event.toolCallId), { args: String(event.delta ?? "") });
+      break;
+    case "TOOL_CALL_END":
+      void executeToolCall(String(event.toolCallId));
+      break;
+    case "TOOL_CALL_RESULT":
+      updateToolCall(String(event.toolCallId), { status: "completed" });
+      break;
+  }
+}
+
+function handleCustomEvent(event: AgUiEvent) {
+  if (event.name === "business.progress") {
+    const value = event.value as Record<string, unknown>;
+    progressEvents.value.push({
+      agentId: String(value.agent_id ?? ""),
+      message: String(value.message ?? ""),
+    });
+    return;
+  }
+  if (event.name === "ui.component.render") {
+    uiRenders.value.push(event.value as UiRender);
+  }
+}
+
+function appendMessageDelta(messageId: string, delta: string) {
+  const message = messages.value.find((item) => item.id === messageId);
+  if (message) message.content += delta;
+}
+
+function completeMessage(messageId: string) {
+  const message = messages.value.find((item) => item.id === messageId);
+  if (message) message.complete = true;
+}
+
+function updateToolCall(toolCallId: string, patch: Partial<ToolCall>) {
+  const toolCall = toolCalls.value.find((item) => item.id === toolCallId);
+  if (toolCall) Object.assign(toolCall, patch);
+}
+
+async function executeToolCall(toolCallId: string) {
+  const toolCall = toolCalls.value.find((item) => item.id === toolCallId);
+  if (!toolCall) return;
+  updateToolCall(toolCallId, { status: "running" });
+  try {
+    const result = await executeBridgeTool(toolCall);
+    await post(`/api/client-actions/${toolCallId}/result`, {
+      status: "completed",
+      result,
+    });
+  } catch (unknownError) {
+    updateToolCall(toolCallId, { status: "failed" });
+    await post(`/api/client-actions/${toolCallId}/result`, {
+      status: "failed",
+      result: {},
+      error: {
+        code: "CLIENT_TOOL_FAILED",
+        message: errorMessage(unknownError),
+        recoverable: true,
+        retryable: false,
+      },
+    });
+  }
+}
+
+async function executeBridgeTool(toolCall: ToolCall): Promise<Record<string, unknown>> {
+  if (toolCall.name === "get_selected_text") {
+    return {
+      text: window.getSelection()?.toString() ?? "",
+    };
+  }
+  if (toolCall.name === "get_current_url") {
+    return {
+      url: window.location.href,
+    };
+  }
+  throw new Error(`Unsupported bridge tool: ${toolCall.name}`);
+}
+
+async function get<T>(path: string): Promise<T> {
+  const response = await fetch(`${apiBase}${path}`);
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as T;
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${apiBase}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as T;
+}
+
+function errorMessage(unknownError: unknown): string {
+  return unknownError instanceof Error ? unknownError.message : String(unknownError);
+}
+</script>
+
 <template>
   <main class="app-shell">
-    <h1>Agent Runtime Demo</h1>
-    <p>Vue validation frontend placeholder.</p>
+    <section class="workspace">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">A</span>
+          <div>
+            <h1>Agent Runtime</h1>
+            <p>{{ status }}</p>
+          </div>
+        </div>
+
+        <label class="field">
+          <span>Business agent</span>
+          <select v-model="selectedAgentId">
+            <option v-for="capability in capabilities" :key="capability.agent_id" :value="capability.agent_id">
+              {{ capability.label }}
+            </option>
+          </select>
+        </label>
+
+        <div class="capability-list">
+          <article v-for="capability in capabilities" :key="capability.agent_id" class="capability">
+            <strong>{{ capability.label }}</strong>
+            <span>{{ capability.available ? "available" : "unavailable" }}</span>
+            <p>{{ capability.description }}</p>
+          </article>
+        </div>
+      </aside>
+
+      <section class="main-pane">
+        <div class="composer">
+          <textarea v-model="input" rows="4" />
+          <div class="composer-actions">
+            <label class="toggle">
+              <input v-model="bridgeEnabled" type="checkbox" />
+              <span>Bridge tool</span>
+            </label>
+            <button :disabled="!canRun" @click="startRun">Run</button>
+            <button class="secondary" :disabled="!isRunning" @click="cancelRun">Stop</button>
+          </div>
+        </div>
+
+        <p v-if="error" class="error">{{ error }}</p>
+
+        <section class="stream">
+          <div class="panel">
+            <h2>Progress</h2>
+            <ol>
+              <li v-for="(progress, index) in progressEvents" :key="`${progress.agentId}-${index}`">
+                <span>{{ progress.agentId }}</span>
+                {{ progress.message }}
+              </li>
+            </ol>
+          </div>
+
+          <div class="panel">
+            <h2>Messages</h2>
+            <article v-for="message in messages" :key="message.id" class="message">
+              <span>{{ message.role }}</span>
+              <p>{{ message.content }}</p>
+            </article>
+          </div>
+
+          <div class="panel">
+            <h2>Bridge</h2>
+            <article v-for="toolCall in toolCalls" :key="toolCall.id" class="tool-call">
+              <strong>{{ toolCall.name }}</strong>
+              <span>{{ toolCall.status }}</span>
+              <code>{{ toolCall.id }}</code>
+            </article>
+          </div>
+
+          <div class="panel">
+            <h2>UI</h2>
+            <article v-for="(render, index) in uiRenders" :key="`${render.component}-${index}`" class="result-card">
+              <template v-if="render.component === 'demo.result_card'">
+                <strong>{{ render.props.title }}</strong>
+                <p>{{ render.props.summary }}</p>
+                <ul>
+                  <li v-for="item in (render.props.items as string[])" :key="item">{{ item }}</li>
+                </ul>
+              </template>
+              <template v-else>
+                <strong>{{ render.fallback?.component ?? render.component }}</strong>
+                <p>{{ render.fallback?.props?.content ?? "Unsupported component" }}</p>
+              </template>
+            </article>
+          </div>
+        </section>
+      </section>
+    </section>
   </main>
 </template>
 
 <style scoped>
 .app-shell {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 32px;
-  font-family: system-ui, sans-serif;
+  min-height: 100vh;
+  background: #f6f7f9;
+  color: #17202a;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.sidebar {
+  border-right: 1px solid #d9dee5;
+  background: #ffffff;
+  padding: 24px;
+}
+
+.brand {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 28px;
+}
+
+.brand-mark {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 8px;
+  background: #1c6b5c;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 18px;
+}
+
+h2 {
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.brand p,
+.capability span,
+.message span,
+.tool-call span,
+.field span {
+  color: #687385;
+  font-size: 12px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+select,
+textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cbd3dd;
+  border-radius: 8px;
+  background: #ffffff;
+  color: inherit;
+  font: inherit;
+}
+
+select {
+  height: 38px;
+  padding: 0 10px;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 110px;
+  padding: 12px;
+}
+
+.capability-list {
+  display: grid;
+  gap: 10px;
+}
+
+.capability,
+.panel,
+.composer {
+  border: 1px solid #d9dee5;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.capability {
+  padding: 12px;
+}
+
+.capability p {
+  margin-top: 8px;
+  color: #4c5969;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.main-pane {
+  padding: 24px;
+}
+
+.composer {
+  padding: 16px;
+}
+
+.composer-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin-right: auto;
+  color: #4c5969;
+  font-size: 13px;
+}
+
+button {
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 16px;
+  background: #1c6b5c;
+  color: #ffffff;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #dfe5ec;
+  color: #17202a;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.error {
+  margin-top: 12px;
+  color: #9b1c31;
+}
+
+.stream {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.panel {
+  min-height: 160px;
+  padding: 16px;
+}
+
+ol,
+ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+li {
+  margin: 8px 0;
+}
+
+li span {
+  display: block;
+  color: #687385;
+  font-size: 12px;
+}
+
+.message,
+.tool-call,
+.result-card {
+  border-top: 1px solid #edf0f4;
+  padding: 12px 0;
+}
+
+.message:first-of-type,
+.tool-call:first-of-type,
+.result-card:first-of-type {
+  border-top: 0;
+}
+
+.message p,
+.result-card p {
+  margin-top: 6px;
+  line-height: 1.55;
+}
+
+.tool-call {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+}
+
+.tool-call code {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: #687385;
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 860px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid #d9dee5;
+  }
+
+  .stream {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
