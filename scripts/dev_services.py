@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import http.client
+import os
 import signal
 import subprocess
 import sys
@@ -38,6 +39,12 @@ def log(message: str) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Start the local MVP agent services.")
     parser.add_argument("--health-timeout", type=float, default=20.0, help="Seconds to wait for all services to be healthy.")
+    parser.add_argument(
+        "--runtime-store",
+        choices=("memory", "redis"),
+        default=os.environ.get("AGENT_RUNTIME_STORE", "memory"),
+        help="Runtime store to pass to all services.",
+    )
     parser.add_argument("--smoke", action="store_true", help="Run scripts/smoke_backend.py after all services are healthy.")
     parser.add_argument("--exit-after-smoke", action="store_true", help="Stop services after --smoke completes.")
     return parser.parse_args()
@@ -60,11 +67,13 @@ def main() -> int:
 
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
+    child_env = os.environ.copy()
+    child_env["AGENT_RUNTIME_STORE"] = args.runtime_store
 
     try:
         for service in SERVICES:
             log(f"starting {service.name}: {' '.join(service.command)}")
-            processes.append((service, subprocess.Popen(service.command)))
+            processes.append((service, subprocess.Popen(service.command, env=child_env)))
 
         if not wait_for_health(processes, timeout_seconds=args.health_timeout):
             return 1

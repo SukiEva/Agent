@@ -36,6 +36,13 @@ The script waits for each service's `/health` endpoint before reporting success.
 python scripts/dev_services.py --smoke --exit-after-smoke
 ```
 
+To run the same stack against Redis-backed runtime state, start Redis and pass the runtime store to all services:
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d redis
+python scripts/dev_services.py --runtime-store redis --smoke --exit-after-smoke
+```
+
 With the four services already running, verify the backend path:
 
 ```bash
@@ -48,10 +55,12 @@ Run the local non-network checks:
 python scripts/verify_all.py
 ```
 
-Agent Server defaults to the in-memory runtime store for local development. To use Redis-backed runtime state, run Agent Server with:
+The local stack defaults to the in-memory runtime store. To use Redis-backed runtime state without `dev_services.py`, set `AGENT_RUNTIME_STORE=redis` for Agent Server, master agent, and business agents:
 
 ```bash
 AGENT_RUNTIME_STORE=redis uv run --package agent-server agent-server
+AGENT_RUNTIME_STORE=redis uv run --package master-agent master-agent
+AGENT_RUNTIME_STORE=redis uv run --package demo-business-agent demo-business-agent
 ```
 
 User and internal auth default to noop for local development. They can be switched through environment variables:
