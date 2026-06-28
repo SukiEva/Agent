@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import {
+  applyAgUiEvent,
+  createRuntimeState,
+  resetRuntimeState,
+  updateToolCall,
+  type AgUiEvent,
+  type ToolCall,
+} from "./runtime/events";
 
 type Capability = {
   agent_id: string;
@@ -11,40 +19,6 @@ type Capability = {
 type Conversation = {
   conversation_id: string;
   client_id: string;
-};
-
-type AgUiEvent = {
-  type: string;
-  [key: string]: unknown;
-};
-
-type Message = {
-  id: string;
-  role: string;
-  content: string;
-  complete: boolean;
-};
-
-type ProgressEvent = {
-  agentId: string;
-  message: string;
-};
-
-type ToolCall = {
-  id: string;
-  name: string;
-  args: string;
-  status: "pending" | "running" | "completed" | "failed";
-};
-
-type UiRender = {
-  component: string;
-  component_version: string;
-  props: Record<string, unknown>;
-  fallback?: {
-    component: string;
-    props: Record<string, unknown>;
-  };
 };
 
 type AttachmentRef = {
@@ -61,19 +35,13 @@ const capabilities = ref<Capability[]>([]);
 const selectedAgentId = ref("");
 const input = ref("run demo task");
 const bridgeEnabled = ref(false);
-const isRunning = ref(false);
 const status = ref("disconnected");
-const runId = ref<string | null>(null);
-const messages = ref<Message[]>([]);
-const progressEvents = ref<ProgressEvent[]>([]);
-const toolCalls = ref<ToolCall[]>([]);
-const uiRenders = ref<UiRender[]>([]);
+const runtimeState = reactive(createRuntimeState());
 const attachments = ref<AttachmentRef[]>([]);
-const error = ref<string | null>(null);
 
 let source: EventSource | null = null;
 
-const canRun = computed(() => conversation.value && input.value.trim() && !isRunning.value);
+const canRun = computed(() => conversation.value && input.value.trim() && !runtimeState.isRunning);
 
 onMounted(async () => {
   await bootstrap();
@@ -89,7 +57,7 @@ async function bootstrap() {
     await loadCapabilities();
     connectEvents();
   } catch (unknownError) {
-    error.value = errorMessage(unknownError);
+    runtimeState.error = errorMessage(unknownError);
   }
 }
 
@@ -116,12 +84,8 @@ function connectEvents() {
 
 async function startRun() {
   if (!conversation.value || !canRun.value) return;
-  error.value = null;
-  isRunning.value = true;
-  progressEvents.value = [];
-  toolCalls.value = [];
-  uiRenders.value = [];
-  messages.value = [];
+  resetRuntimeState(runtimeState);
+  runtimeState.isRunning = true;
   const response = await post<{ run_id: string; root_task_id: string }>("/api/runs", {
     conversation_id: conversation.value.conversation_id,
     client_id: conversation.value.client_id,
@@ -141,14 +105,14 @@ async function startRun() {
         }
       : {},
   });
-  runId.value = response.run_id;
+  runtimeState.runId = response.run_id;
 }
 
 async function uploadAttachment(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
-  error.value = null;
+  runtimeState.error = null;
   try {
     const formData = new FormData();
     formData.append("file", file);
@@ -159,7 +123,7 @@ async function uploadAttachment(event: Event) {
     if (!response.ok) throw new Error(await response.text());
     attachments.value.push((await response.json()) as AttachmentRef);
   } catch (unknownError) {
-    error.value = errorMessage(unknownError);
+    runtimeState.error = errorMessage(unknownError);
   } finally {
     input.value = "";
   }
@@ -170,94 +134,20 @@ function removeAttachment(fileId: string) {
 }
 
 async function cancelRun() {
-  if (!runId.value) return;
-  await post(`/api/runs/${runId.value}/cancel`, {});
-  isRunning.value = false;
+  if (!runtimeState.runId) return;
+  await post(`/api/runs/${runtimeState.runId}/cancel`, {});
+  runtimeState.isRunning = false;
 }
 
 function handleEvent(event: AgUiEvent) {
-  switch (event.type) {
-    case "RUN_STARTED":
-      isRunning.value = true;
-      runId.value = String(event.runId);
-      break;
-    case "RUN_FINISHED":
-      isRunning.value = false;
-      break;
-    case "RUN_ERROR":
-      isRunning.value = false;
-      error.value = String(event.message ?? "Run failed");
-      break;
-    case "TEXT_MESSAGE_START":
-      messages.value.push({
-        id: String(event.messageId),
-        role: String(event.role ?? "assistant"),
-        content: "",
-        complete: false,
-      });
-      break;
-    case "TEXT_MESSAGE_CONTENT":
-      appendMessageDelta(String(event.messageId), String(event.delta ?? ""));
-      break;
-    case "TEXT_MESSAGE_END":
-      completeMessage(String(event.messageId));
-      break;
-    case "CUSTOM":
-      handleCustomEvent(event);
-      break;
-    case "TOOL_CALL_START":
-      toolCalls.value.push({
-        id: String(event.toolCallId),
-        name: String(event.toolCallName),
-        args: "",
-        status: "pending",
-      });
-      break;
-    case "TOOL_CALL_ARGS":
-      updateToolCall(String(event.toolCallId), { args: String(event.delta ?? "") });
-      break;
-    case "TOOL_CALL_END":
-      void executeToolCall(String(event.toolCallId));
-      break;
-    case "TOOL_CALL_RESULT":
-      updateToolCall(String(event.toolCallId), { status: "completed" });
-      break;
-  }
-}
-
-function handleCustomEvent(event: AgUiEvent) {
-  if (event.name === "business.progress") {
-    const value = event.value as Record<string, unknown>;
-    progressEvents.value.push({
-      agentId: String(value.agent_id ?? ""),
-      message: String(value.message ?? ""),
-    });
-    return;
-  }
-  if (event.name === "ui.component.render") {
-    uiRenders.value.push(event.value as UiRender);
-  }
-}
-
-function appendMessageDelta(messageId: string, delta: string) {
-  const message = messages.value.find((item) => item.id === messageId);
-  if (message) message.content += delta;
-}
-
-function completeMessage(messageId: string) {
-  const message = messages.value.find((item) => item.id === messageId);
-  if (message) message.complete = true;
-}
-
-function updateToolCall(toolCallId: string, patch: Partial<ToolCall>) {
-  const toolCall = toolCalls.value.find((item) => item.id === toolCallId);
-  if (toolCall) Object.assign(toolCall, patch);
+  const effect = applyAgUiEvent(runtimeState, event);
+  if (effect.executeToolCallId) void executeToolCall(effect.executeToolCallId);
 }
 
 async function executeToolCall(toolCallId: string) {
-  const toolCall = toolCalls.value.find((item) => item.id === toolCallId);
+  const toolCall = runtimeState.toolCalls.find((item) => item.id === toolCallId);
   if (!toolCall) return;
-  updateToolCall(toolCallId, { status: "running" });
+  updateToolCall(runtimeState, toolCallId, { status: "running" });
   try {
     const result = await executeBridgeTool(toolCall);
     await post(`/api/client-actions/${toolCallId}/result`, {
@@ -265,7 +155,7 @@ async function executeToolCall(toolCallId: string) {
       result,
     });
   } catch (unknownError) {
-    updateToolCall(toolCallId, { status: "failed" });
+    updateToolCall(runtimeState, toolCallId, { status: "failed" });
     await post(`/api/client-actions/${toolCallId}/result`, {
       status: "failed",
       result: {},
@@ -366,17 +256,17 @@ function errorMessage(unknownError: unknown): string {
               <span>Bridge tool</span>
             </label>
             <button :disabled="!canRun" @click="startRun">Run</button>
-            <button class="secondary" :disabled="!isRunning" @click="cancelRun">Stop</button>
+            <button class="secondary" :disabled="!runtimeState.isRunning" @click="cancelRun">Stop</button>
           </div>
         </div>
 
-        <p v-if="error" class="error">{{ error }}</p>
+        <p v-if="runtimeState.error" class="error">{{ runtimeState.error }}</p>
 
         <section class="stream">
           <div class="panel">
             <h2>Progress</h2>
             <ol>
-              <li v-for="(progress, index) in progressEvents" :key="`${progress.agentId}-${index}`">
+              <li v-for="(progress, index) in runtimeState.progressEvents" :key="`${progress.agentId}-${index}`">
                 <span>{{ progress.agentId }}</span>
                 {{ progress.message }}
               </li>
@@ -385,7 +275,7 @@ function errorMessage(unknownError: unknown): string {
 
           <div class="panel">
             <h2>Messages</h2>
-            <article v-for="message in messages" :key="message.id" class="message">
+            <article v-for="message in runtimeState.messages" :key="message.id" class="message">
               <span>{{ message.role }}</span>
               <p>{{ message.content }}</p>
             </article>
@@ -393,7 +283,7 @@ function errorMessage(unknownError: unknown): string {
 
           <div class="panel">
             <h2>Bridge</h2>
-            <article v-for="toolCall in toolCalls" :key="toolCall.id" class="tool-call">
+            <article v-for="toolCall in runtimeState.toolCalls" :key="toolCall.id" class="tool-call">
               <strong>{{ toolCall.name }}</strong>
               <span>{{ toolCall.status }}</span>
               <code>{{ toolCall.id }}</code>
@@ -402,7 +292,7 @@ function errorMessage(unknownError: unknown): string {
 
           <div class="panel">
             <h2>UI</h2>
-            <article v-for="(render, index) in uiRenders" :key="`${render.component}-${index}`" class="result-card">
+            <article v-for="(render, index) in runtimeState.uiRenders" :key="`${render.component}-${index}`" class="result-card">
               <template v-if="render.component === 'demo.result_card'">
                 <strong>{{ render.props.title }}</strong>
                 <p>{{ render.props.summary }}</p>

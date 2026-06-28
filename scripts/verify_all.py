@@ -33,6 +33,7 @@ def main() -> int:
         run(["./.venv/bin/python", test])
 
     env = {"PATH": f"{NODE_BIN}:{os.environ.get('PATH', '')}"}
+    run(["bun", "src/runtime/events.test.ts"], cwd=ROOT / "web", env=env)
     run(["./node_modules/.bin/vue-tsc", "-b"], cwd=ROOT / "web", env=env)
     return 0
 
