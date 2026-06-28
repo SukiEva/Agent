@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from agent_core.config import load_service_config
+from agent_core.logging import configure_service_logging
 from agent_core.schemas.agent import AgentRef
 
 
@@ -29,6 +30,10 @@ def _load_registry() -> dict[str, AgentRef]:
     return agents
 
 
+def _settings() -> dict[str, Any]:
+    return load_service_config(_conf_dir())
+
+
 def _agent_with_defaults(raw_agent: dict[str, Any]) -> dict[str, Any]:
     display = raw_agent.get("display")
     if not display:
@@ -41,6 +46,8 @@ def _agent_with_defaults(raw_agent: dict[str, Any]) -> dict[str, Any]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Agent Gateway")
+    app.state.settings = _settings()
+    configure_service_logging(app.state.settings)
     app.state.registry = _load_registry()
 
     @app.get("/health")

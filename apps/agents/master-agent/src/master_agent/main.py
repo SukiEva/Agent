@@ -14,6 +14,7 @@ from agent_core.events import (
     agui_text_start,
 )
 from agent_core.ids import new_message_id
+from agent_core.logging import configure_service_logging
 from agent_core.serialization import json_line, parse_json_line
 
 
@@ -28,6 +29,7 @@ def _settings() -> dict[str, Any]:
 def create_app() -> FastAPI:
     app = FastAPI(title="Master Agent")
     app.state.settings = _settings()
+    configure_service_logging(app.state.settings)
     app.state.cancelled_tasks = set()
     app.state.active_targets = {}
 

@@ -23,6 +23,7 @@ from agent_core.events import (
 )
 from agent_core.files import build_file_store
 from agent_core.ids import new_action_id, new_client_id, new_conversation_id, new_run_id, new_task_id
+from agent_core.logging import configure_service_logging
 from agent_core.schemas.bridge import ClientActionCreate, ClientActionRequest, ClientActionResult
 from agent_core.schemas.run import BusinessTaskRequest, RunRequest
 from agent_core.serialization import parse_json_line, to_dict
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.state.settings = _settings()
+    configure_service_logging(app.state.settings)
     app.state.stores = create_runtime_stores(app.state.settings)
     app.state.user_auth = build_user_authenticator(app.state.settings)
     app.state.internal_auth = build_internal_authenticator(app.state.settings)

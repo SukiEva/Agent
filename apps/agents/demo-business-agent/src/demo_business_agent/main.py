@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
 from agent_core.config import load_service_config
+from agent_core.logging import configure_service_logging
 from agent_core.schemas.errors import AgentError
 from agent_core.schemas.business import BusinessProgressEvent, BusinessResultEnvelope, DeliveryDirective
 from agent_core.schemas.ui import UiDescriptor, UiFallback
@@ -25,6 +26,7 @@ def _settings() -> dict[str, Any]:
 def create_app() -> FastAPI:
     app = FastAPI(title="Demo Business Agent")
     app.state.settings = _settings()
+    configure_service_logging(app.state.settings)
     app.state.cancelled_tasks = set()
 
     @app.get("/health")

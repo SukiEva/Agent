@@ -26,6 +26,7 @@ def main() -> int:
         "tests/test_cancel_events.py",
         "tests/test_files.py",
         "tests/test_agent_server_files.py",
+        "tests/test_logging.py",
     ):
         run(["./.venv/bin/python", test])
 
