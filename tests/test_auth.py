@@ -8,6 +8,7 @@ from agent_core.auth import (
     NoopInternalAuthenticator,
     NoopUserAuthenticator,
     SharedSecretInternalAuthenticator,
+    build_internal_auth_headers,
     build_internal_authenticator,
     build_user_authenticator,
 )
@@ -76,9 +77,29 @@ def test_auth_factories() -> None:
     )
 
 
+def test_internal_auth_headers() -> None:
+    headers = build_internal_auth_headers(
+        {"auth": {"internal": {"mode": "shared_secret", "secret": "secret"}}},
+        service_id="demo-service",
+        agent_id="demo_agent",
+    )
+    assert headers == {
+        "x-service-id": "demo-service",
+        "x-agent-id": "demo_agent",
+        "x-agent-internal-secret": "secret",
+    }
+
+    noop_headers = build_internal_auth_headers(
+        {"auth": {"internal": {"mode": "noop"}}},
+        service_id="demo-service",
+    )
+    assert noop_headers == {"x-service-id": "demo-service"}
+
+
 if __name__ == "__main__":
     test_noop_authenticators()
     test_header_user_authenticator()
     test_shared_secret_internal_authenticator()
     test_auth_factories()
+    test_internal_auth_headers()
     print("auth tests ok")

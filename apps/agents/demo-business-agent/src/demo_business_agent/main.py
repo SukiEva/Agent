@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
+from agent_core.auth import build_internal_auth_headers
 from agent_core.a2a import build_agent_card
 from agent_core.config import load_service_config
 from agent_core.logging import configure_service_logging
@@ -181,13 +182,20 @@ async def _maybe_call_frontend_bridge(app: FastAPI, payload: dict[str, Any]) -> 
     action_name = str(bridge.get("action_name", "get_selected_text"))
     args = bridge.get("args") if isinstance(bridge.get("args"), dict) else {}
     agent_server_base_url = app.state.settings.get("agent_server", {}).get("base_url", "http://localhost:8000")
+    agent_id = app.state.settings["agent"]["id"]
+    headers = build_internal_auth_headers(
+        app.state.settings,
+        service_id=agent_id,
+        agent_id=agent_id,
+    )
     async with httpx.AsyncClient(timeout=None, trust_env=False) as client:
         response = await client.post(
             f"{agent_server_base_url}/internal/client-actions",
+            headers=headers,
             json={
                 "conversation_id": payload["conversation_id"],
                 "run_id": payload["run_id"],
-                "agent_id": app.state.settings["agent"]["id"],
+                "agent_id": agent_id,
                 "action_name": action_name,
                 "args": args,
                 "timeout_ms": int(bridge.get("timeout_ms", 30000)),

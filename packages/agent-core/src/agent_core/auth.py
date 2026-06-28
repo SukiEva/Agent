@@ -91,6 +91,29 @@ def build_internal_authenticator(settings: dict[str, object]) -> InternalAuthent
     raise ValueError(f"unsupported internal auth mode: {mode}")
 
 
+def build_internal_auth_headers(
+    settings: dict[str, object],
+    *,
+    service_id: str,
+    agent_id: str | None = None,
+) -> dict[str, str]:
+    auth_settings = _auth_settings(settings).get("internal", {})
+    mode = auth_settings.get("mode", "noop")
+    headers = {"x-service-id": service_id}
+    if agent_id:
+        headers["x-agent-id"] = agent_id
+    if mode == "noop":
+        return headers
+    if mode == "shared_secret":
+        secret = str(auth_settings.get("secret", ""))
+        if not secret:
+            raise ValueError("internal shared_secret auth requires auth.internal.secret")
+        header = str(auth_settings.get("header", "x-agent-internal-secret")).lower()
+        headers[header] = secret
+        return headers
+    raise ValueError(f"unsupported internal auth mode: {mode}")
+
+
 def _auth_settings(settings: dict[str, object]) -> dict[str, object]:
     value = settings.get("auth", {})
     return value if isinstance(value, dict) else {}

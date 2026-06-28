@@ -10,7 +10,8 @@ auth:
   user:
     mode: noop
   internal:
-    mode: noop
+    mode: ${oc.env:AGENT_INTERNAL_AUTH_MODE,noop}
+    secret: ${oc.env:AGENT_INTERNAL_AUTH_SECRET,""}
 
 files:
   local_root: .data/files
