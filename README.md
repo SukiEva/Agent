@@ -29,6 +29,12 @@ With the four services running, verify the backend path:
 python scripts/smoke_backend.py
 ```
 
+Agent Server defaults to the in-memory runtime store for local development. To use Redis-backed runtime state, run Agent Server with:
+
+```bash
+AGENT_RUNTIME_STORE=redis uv run --package agent-server agent-server
+```
+
 ## Frontend
 
 ```bash

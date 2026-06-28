@@ -10,3 +10,6 @@ gateway:
 
 routing:
   master_agent_id: master_agent
+
+runtime:
+  store: ${oc.env:AGENT_RUNTIME_STORE,memory}

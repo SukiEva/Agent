@@ -24,7 +24,7 @@ from agent_core.ids import new_action_id, new_client_id, new_conversation_id, ne
 from agent_core.schemas.bridge import ClientActionCreate, ClientActionRequest, ClientActionResult
 from agent_core.schemas.run import BusinessTaskRequest, RunRequest
 from agent_core.serialization import parse_json_line, to_dict
-from agent_core.stores import RuntimeStores
+from agent_core.stores import RuntimeStores, create_runtime_stores
 
 
 def _conf_dir() -> Path:
@@ -45,7 +45,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.state.settings = _settings()
-    app.state.stores = RuntimeStores()
+    app.state.stores = create_runtime_stores(app.state.settings)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

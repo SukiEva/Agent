@@ -1,6 +1,11 @@
 redis:
   url: redis://localhost:6379/0
 
+runtime:
+  store: memory
+  ttl_seconds: 3600
+  event_maxlen: 1000
+
 logging:
   level: INFO
   format: json
