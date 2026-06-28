@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
+from agent_core.a2a import build_agent_card
 from agent_core.config import load_service_config
 from agent_core.logging import configure_service_logging
 from agent_core.schemas.errors import AgentError
@@ -35,13 +36,7 @@ def create_app() -> FastAPI:
 
     @app.get("/.well-known/agent-card.json")
     async def agent_card() -> dict[str, object]:
-        agent = app.state.settings["agent"]
-        return {
-            "name": agent["id"],
-            "description": agent["display"]["description"],
-            "url": "http://localhost:8011",
-            "metadata": agent,
-        }
+        return build_agent_card(app.state.settings)
 
     @app.post("/a2a/tasks")
     async def create_task(request: Request) -> StreamingResponse:

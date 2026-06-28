@@ -21,6 +21,7 @@ def run(command: list[str], cwd: Path = ROOT, env: dict[str, str] | None = None)
 def main() -> int:
     run(["./.venv/bin/python", "-m", "compileall", "apps", "packages", "scripts", "tests"])
     for test in (
+        "tests/test_a2a_cards.py",
         "tests/test_agent_core_stores.py",
         "tests/test_auth.py",
         "tests/test_cancel_events.py",
