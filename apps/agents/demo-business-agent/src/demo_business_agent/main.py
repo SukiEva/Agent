@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from agent_core.auth import build_internal_auth_headers
 from agent_core.a2a import build_agent_card
 from agent_core.config import load_service_config
+from agent_core.llm import build_pydantic_agent
 from agent_core.logging import configure_service_logging
 from agent_core.schemas.errors import AgentError
 from agent_core.schemas.business import BusinessProgressEvent, BusinessResultEnvelope, DeliveryDirective
@@ -31,6 +32,10 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Demo Business Agent")
     app.state.settings = _settings()
     configure_service_logging(app.state.settings)
+    app.state.pydantic_agent = build_pydantic_agent(
+        app.state.settings,
+        system_prompt="Run the demo business task and return structured business results.",
+    )
     app.state.stores = create_runtime_stores(app.state.settings)
     app.state.cancelled_tasks = set()
 

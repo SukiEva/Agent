@@ -16,6 +16,7 @@ from agent_core.events import (
     agui_text_start,
 )
 from agent_core.ids import new_message_id
+from agent_core.llm import build_pydantic_agent
 from agent_core.logging import configure_service_logging
 from agent_core.serialization import json_line, parse_json_line
 from agent_core.server import hypercorn_bind
@@ -34,6 +35,10 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Master Agent")
     app.state.settings = _settings()
     configure_service_logging(app.state.settings)
+    app.state.pydantic_agent = build_pydantic_agent(
+        app.state.settings,
+        system_prompt="Route the user's task to the best available business agent.",
+    )
     app.state.stores = create_runtime_stores(app.state.settings)
     app.state.cancelled_tasks = set()
     app.state.active_targets = {}

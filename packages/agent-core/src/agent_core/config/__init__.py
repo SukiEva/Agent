@@ -75,6 +75,16 @@ class TimeoutsBlock(BaseModel):
     llm_call_seconds: int = Field(default=60, ge=1)
 
 
+class LlmBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    base_url: str = "https://api.openai.com/v1"
+    api_key: str = ""
+    model: str = "gpt-4.1-mini"
+    temperature: float = Field(default=0.2, ge=0)
+    timeout_seconds: int = Field(default=60, ge=1)
+
+
 class GatewayBlock(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -104,6 +114,7 @@ class ServiceSettings(BaseModel):
     files: FilesBlock = Field(default_factory=FilesBlock)
     logging: LoggingBlock = Field(default_factory=LoggingBlock)
     timeouts: TimeoutsBlock = Field(default_factory=TimeoutsBlock)
+    llm: LlmBlock | None = None
     gateway: GatewayBlock | None = None
     routing: RoutingBlock | None = None
     registry: RegistryBlock | None = None
