@@ -23,3 +23,7 @@ def action_result_key(action_id: str) -> str:
 
 def run_state_key(run_id: str) -> str:
     return redis_key("run", run_id, "state")
+
+
+def agent_command_stream_key(agent_id: str) -> str:
+    return redis_key("agent", agent_id, "commands")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from agent_core.events import (
 from agent_core.ids import new_message_id
 from agent_core.logging import configure_service_logging
 from agent_core.serialization import json_line, parse_json_line
+from agent_core.stores import create_runtime_stores
 
 
 def _conf_dir() -> Path:
@@ -31,8 +33,17 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Master Agent")
     app.state.settings = _settings()
     configure_service_logging(app.state.settings)
+    app.state.stores = create_runtime_stores(app.state.settings)
     app.state.cancelled_tasks = set()
     app.state.active_targets = {}
+
+    @app.on_event("startup")
+    async def startup() -> None:
+        _start_command_listener(app)
+
+    @app.on_event("shutdown")
+    async def shutdown() -> None:
+        await _stop_command_listener(app)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -110,11 +121,42 @@ async def _cancel_business_task(app: FastAPI, target_agent_id: str, task_id: str
     import httpx
 
     gateway_base_url = app.state.settings["gateway"]["base_url"]
+    await app.state.stores.commands.publish(target_agent_id, {"type": "cancel_task", "task_id": task_id})
     try:
         async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
             await client.post(f"{gateway_base_url}/a2a/{target_agent_id}/tasks/{task_id}/cancel")
     except Exception:
         return
+
+
+def _start_command_listener(app: FastAPI) -> None:
+    if app.state.settings.get("runtime", {}).get("store") != "redis":
+        app.state.command_listener = None
+        return
+    app.state.command_listener = asyncio.create_task(_listen_for_commands(app))
+
+
+async def _stop_command_listener(app: FastAPI) -> None:
+    listener = getattr(app.state, "command_listener", None)
+    if listener is None:
+        return
+    listener.cancel()
+    try:
+        await listener
+    except asyncio.CancelledError:
+        return
+
+
+async def _listen_for_commands(app: FastAPI) -> None:
+    agent_id = app.state.settings["agent"]["id"]
+    async for command in app.state.stores.commands.stream(agent_id):
+        if command.get("type") != "cancel_task":
+            continue
+        task_id = str(command["task_id"])
+        app.state.cancelled_tasks.add(task_id)
+        target_agent_id = app.state.active_targets.get(task_id)
+        if target_agent_id:
+            await _cancel_business_task(app, target_agent_id, task_id)
 
 
 async def _business_to_agui(event: dict[str, Any]):

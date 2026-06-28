@@ -2,7 +2,7 @@ redis:
   url: redis://localhost:6379/0
 
 runtime:
-  store: memory
+  store: ${oc.env:AGENT_RUNTIME_STORE,memory}
   ttl_seconds: 3600
   event_maxlen: 1000
 

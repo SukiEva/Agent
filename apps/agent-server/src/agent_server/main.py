@@ -258,6 +258,7 @@ async def _cancel_master_task(app: FastAPI, task_id: str) -> None:
     settings = app.state.settings
     gateway_base_url = settings["gateway"]["base_url"]
     master_agent_id = settings["routing"]["master_agent_id"]
+    await app.state.stores.commands.publish(master_agent_id, {"type": "cancel_task", "task_id": task_id})
     try:
         async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
             await client.post(f"{gateway_base_url}/a2a/{master_agent_id}/tasks/{task_id}/cancel")

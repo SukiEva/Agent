@@ -14,6 +14,7 @@ from agent_core.schemas.errors import AgentError
 from agent_core.schemas.business import BusinessProgressEvent, BusinessResultEnvelope, DeliveryDirective
 from agent_core.schemas.ui import UiDescriptor, UiFallback
 from agent_core.serialization import json_line, to_dict
+from agent_core.stores import create_runtime_stores
 
 
 def _conf_dir() -> Path:
@@ -28,7 +29,16 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Demo Business Agent")
     app.state.settings = _settings()
     configure_service_logging(app.state.settings)
+    app.state.stores = create_runtime_stores(app.state.settings)
     app.state.cancelled_tasks = set()
+
+    @app.on_event("startup")
+    async def startup() -> None:
+        _start_command_listener(app)
+
+    @app.on_event("shutdown")
+    async def shutdown() -> None:
+        await _stop_command_listener(app)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -117,6 +127,31 @@ def create_app() -> FastAPI:
 
 def _is_cancelled(app: FastAPI, task_id: str) -> bool:
     return task_id in app.state.cancelled_tasks
+
+
+def _start_command_listener(app: FastAPI) -> None:
+    if app.state.settings.get("runtime", {}).get("store") != "redis":
+        app.state.command_listener = None
+        return
+    app.state.command_listener = asyncio.create_task(_listen_for_commands(app))
+
+
+async def _stop_command_listener(app: FastAPI) -> None:
+    listener = getattr(app.state, "command_listener", None)
+    if listener is None:
+        return
+    listener.cancel()
+    try:
+        await listener
+    except asyncio.CancelledError:
+        return
+
+
+async def _listen_for_commands(app: FastAPI) -> None:
+    agent_id = app.state.settings["agent"]["id"]
+    async for command in app.state.stores.commands.stream(agent_id):
+        if command.get("type") == "cancel_task":
+            app.state.cancelled_tasks.add(str(command["task_id"]))
 
 
 def _cancelled_event(agent_id: str, run_id: str, task_id: str) -> dict[str, object]:

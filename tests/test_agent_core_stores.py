@@ -6,6 +6,7 @@ from agent_core.events import agui_run_started
 from agent_core.redis import (
     action_result_key,
     action_state_key,
+    agent_command_stream_key,
     conversation_events_key,
     conversation_state_key,
     run_state_key,
@@ -20,6 +21,7 @@ def test_redis_keys_use_hash_tags() -> None:
     assert action_state_key("act_1") == "action:{act_1}:state"
     assert action_result_key("act_1") == "action:{act_1}:result"
     assert run_state_key("run_1") == "run:{run_1}:state"
+    assert agent_command_stream_key("demo_business_agent") == "agent:{demo_business_agent}:commands"
 
 
 def test_memory_runtime_store_roundtrip() -> None:
@@ -51,6 +53,12 @@ async def _memory_runtime_store_roundtrip() -> None:
     result = ClientActionResult(action_id="act_1", status="completed", result={"text": "hello"})
     await stores.client_actions.complete(result)
     assert await stores.client_actions.wait("act_1", 100) == result
+
+    await stores.commands.publish("demo_business_agent", {"type": "cancel_task", "task_id": "task_1"})
+    commands = stores.commands.stream("demo_business_agent")
+    command = await asyncio.wait_for(anext(commands), timeout=1)
+    assert command == {"type": "cancel_task", "task_id": "task_1"}
+    await commands.aclose()
 
 
 if __name__ == "__main__":

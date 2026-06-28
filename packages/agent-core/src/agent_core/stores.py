@@ -12,6 +12,7 @@ from agent_core.events import SseEvent
 from agent_core.redis import (
     action_result_key,
     action_state_key,
+    agent_command_stream_key,
     conversation_events_key,
     conversation_state_key,
     run_state_key,
@@ -131,6 +132,33 @@ class InMemoryRunStore:
 
     async def get(self, run_id: str) -> dict[str, object] | None:
         return self._runs.get(run_id)
+
+
+class InMemoryCommandStore:
+    def __init__(self) -> None:
+        self._commands: dict[str, list[dict[str, object]]] = defaultdict(list)
+        self._conditions: dict[str, asyncio.Condition] = defaultdict(asyncio.Condition)
+
+    async def publish(self, agent_id: str, command: dict[str, object]) -> None:
+        condition = self._conditions[agent_id]
+        async with condition:
+            self._commands[agent_id].append(command)
+            condition.notify_all()
+
+    async def stream(self, agent_id: str, heartbeat_seconds: float = 15.0) -> AsyncIterator[dict[str, object]]:
+        index = 0
+        condition = self._conditions[agent_id]
+        while True:
+            async with condition:
+                while len(self._commands[agent_id]) <= index:
+                    try:
+                        await asyncio.wait_for(condition.wait(), timeout=heartbeat_seconds)
+                    except TimeoutError:
+                        continue
+                pending = self._commands[agent_id][index:]
+                index = len(self._commands[agent_id])
+            for command in pending:
+                yield command
 
 
 class RedisConversationStore:
@@ -290,12 +318,42 @@ class RedisRunStore:
         )
 
 
+class RedisCommandStore:
+    def __init__(self, redis: Any, ttl_seconds: int, maxlen: int) -> None:
+        self._redis = redis
+        self._ttl_seconds = ttl_seconds
+        self._maxlen = maxlen
+
+    async def publish(self, agent_id: str, command: dict[str, object]) -> None:
+        key = agent_command_stream_key(agent_id)
+        await self._redis.xadd(
+            key,
+            {"data": json.dumps(command, ensure_ascii=False, separators=(",", ":"))},
+            maxlen=self._maxlen,
+            approximate=True,
+        )
+        await self._redis.expire(key, self._ttl_seconds)
+
+    async def stream(self, agent_id: str, heartbeat_seconds: float = 15.0) -> AsyncIterator[dict[str, object]]:
+        key = agent_command_stream_key(agent_id)
+        last_seen = "$"
+        while True:
+            rows = await self._redis.xread({key: last_seen}, count=10, block=int(heartbeat_seconds * 1000))
+            if not rows:
+                continue
+            for _, stream_rows in rows:
+                for event_id, fields in stream_rows:
+                    last_seen = event_id
+                    yield json.loads(fields["data"])
+
+
 @dataclass
 class RuntimeStores:
     conversations: Any = field(default_factory=InMemoryConversationStore)
     events: Any = field(default_factory=InMemoryEventStore)
     client_actions: Any = field(default_factory=InMemoryClientActionStore)
     runs: Any = field(default_factory=InMemoryRunStore)
+    commands: Any = field(default_factory=InMemoryCommandStore)
 
 
 def create_runtime_stores(settings: dict[str, Any]) -> RuntimeStores:
@@ -317,4 +375,5 @@ def create_runtime_stores(settings: dict[str, Any]) -> RuntimeStores:
         events=RedisEventStore(client, ttl_seconds=ttl_seconds, maxlen=event_maxlen),
         client_actions=RedisClientActionStore(client, ttl_seconds=ttl_seconds),
         runs=RedisRunStore(client, ttl_seconds=ttl_seconds),
+        commands=RedisCommandStore(client, ttl_seconds=ttl_seconds, maxlen=event_maxlen),
     )
