@@ -181,9 +181,8 @@ async def _business_to_agui(event: dict[str, Any]):
 
     if event_type == "business.result":
         envelope = event["envelope"]
-        result = envelope.get("result", {})
         message_id = new_message_id()
-        summary = str(result.get("summary") or "Business task completed.")
+        summary = _business_result_text(envelope)
         yield agui_text_start(message_id)
         yield agui_text_delta(message_id, summary)
         yield agui_text_end(message_id)
@@ -194,6 +193,40 @@ async def _business_to_agui(event: dict[str, Any]):
 
     if event_type == "business.error":
         yield agui_custom("business.error", event)
+
+
+def _business_result_text(envelope: dict[str, Any]) -> str:
+    result = envelope.get("result", {})
+    if not isinstance(result, dict):
+        return "Business task completed."
+    summary = str(result.get("summary") or "Business task completed.")
+    delivery = envelope.get("delivery", {})
+    mode = delivery.get("mode") if isinstance(delivery, dict) else "summarize"
+    if mode == "passthrough":
+        return summary
+    if mode == "compose":
+        return _compose_business_result(summary, result, envelope)
+    return _summarize_business_result(summary, result)
+
+
+def _summarize_business_result(summary: str, result: dict[str, Any]) -> str:
+    items = result.get("items")
+    if isinstance(items, list) and items:
+        item_count = len(items)
+        return f"{summary}\n\nSummary includes {item_count} result item{'s' if item_count != 1 else ''}."
+    return summary
+
+
+def _compose_business_result(summary: str, result: dict[str, Any], envelope: dict[str, Any]) -> str:
+    lines = [summary]
+    items = result.get("items")
+    if isinstance(items, list) and items:
+        lines.extend(f"- {item}" for item in items)
+    warnings = envelope.get("warnings")
+    if isinstance(warnings, list) and warnings:
+        lines.append("Warnings:")
+        lines.extend(f"- {warning}" for warning in warnings)
+    return "\n".join(str(line) for line in lines)
 
 
 app = create_app()
