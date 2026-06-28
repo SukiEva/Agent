@@ -174,6 +174,17 @@ async def _redis_runtime_stores_use_expected_commands() -> None:
     assert await asyncio.wait_for(next_command, timeout=1) == {"type": "cancel_task", "task_id": "task_1"}
     await command_stream.aclose()
 
+    first_instance_stream = commands.stream("demo_business_agent", heartbeat_seconds=0.1)
+    second_instance_stream = commands.stream("demo_business_agent", heartbeat_seconds=0.1)
+    first_instance_command: asyncio.Task[dict[str, Any]] = asyncio.create_task(anext(first_instance_stream))
+    second_instance_command: asyncio.Task[dict[str, Any]] = asyncio.create_task(anext(second_instance_stream))
+    await asyncio.sleep(0)
+    await commands.publish("demo_business_agent", {"type": "cancel_task", "task_id": "task_2"})
+    assert await asyncio.wait_for(first_instance_command, timeout=1) == {"type": "cancel_task", "task_id": "task_2"}
+    assert await asyncio.wait_for(second_instance_command, timeout=1) == {"type": "cancel_task", "task_id": "task_2"}
+    await first_instance_stream.aclose()
+    await second_instance_stream.aclose()
+
 
 if __name__ == "__main__":
     test_redis_runtime_stores_use_expected_commands()

@@ -10,8 +10,8 @@ Redis stores:
 - Short-term AG-UI-compatible conversation event streams.
 - Pending frontend bridge actions and results.
 - Run and task short-term status.
-- Agent task owner instance metadata.
-- Per-instance command streams for cancellation.
+- Short-term running task metadata.
+- Per-agent command streams for cancellation.
 - Gateway health cache, optionally.
 
 Redis does not store:
@@ -37,11 +37,7 @@ run:{run_1}:state
 action:{act_1}:state
 action:{act_1}:result
 
-task:{task_1}:state
-task:{task_1}:commands
-
-agent_instance:{inst_1}:heartbeat
-agent_commands:{inst_1}:stream
+agent:{demo_business_agent}:commands
 ```
 
 Cross-slot transactions should be avoided. When two resources are related but do not require atomic multi-key operations, store the related ID in the value.
@@ -83,27 +79,17 @@ Owner agent instance migration is not supported in the MVP. If the waiting agent
 
 ## Cancellation
 
-Each running A2A task records its owner instance:
+The MVP uses per-agent command broadcast instead of owner-instance addressing:
 
 ```text
-task:{task_id}:state
+agent:{agent_id}:commands
 ```
 
-Cancel requests may land on any instance. The receiver writes:
-
-```text
-cancel_requested = true
-```
-
-and appends a cancel command to the owner instance command stream:
-
-```text
-agent_commands:{owner_instance_id}:stream
-```
-
-The owner instance listens to its command stream and calls `asyncio.Task.cancel()` on the local task.
+Cancel requests may land on any instance behind an ALB. The receiver appends a cancel command to the target agent's command stream. Every live instance of that agent listens to the same stream; only the instance holding the local `asyncio.Task` for the task ID cancels anything.
 
 Long-running tasks should also check the `cancel_requested` flag at cooperative checkpoints.
+
+This avoids endpoint-specific routing and extra owner heartbeat state in the MVP. A future version can replace broadcast with owner-instance streams or Redis consumer groups if command volume or duplicate delivery becomes a problem.
 
 ## Persistence Boundary
 
