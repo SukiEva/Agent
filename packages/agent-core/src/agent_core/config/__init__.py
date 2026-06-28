@@ -1,7 +1,112 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ServiceBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    name: str | None = None
+
+
+class ServerBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    host: str = "0.0.0.0"
+    port: int = Field(default=8000, ge=1, le=65535)
+
+
+class RedisBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    url: str = "redis://localhost:6379/0"
+
+
+class RuntimeBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    store: Literal["memory", "redis"] = "memory"
+    ttl_seconds: int = Field(default=3600, ge=1)
+    event_maxlen: int = Field(default=1000, ge=1)
+
+
+class UserAuthBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    mode: Literal["noop", "header"] = "noop"
+
+
+class InternalAuthBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    mode: Literal["noop", "shared_secret"] = "noop"
+    secret: str = ""
+
+
+class AuthBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    user: UserAuthBlock = Field(default_factory=UserAuthBlock)
+    internal: InternalAuthBlock = Field(default_factory=InternalAuthBlock)
+
+
+class FilesBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    local_root: str = ".data/files"
+
+
+class LoggingBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    level: str = "INFO"
+    format: Literal["json", "text"] = "json"
+
+
+class TimeoutsBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    run_seconds: int = Field(default=600, ge=1)
+    business_task_seconds: int = Field(default=300, ge=1)
+    bridge_action_seconds: int = Field(default=30, ge=1)
+    llm_call_seconds: int = Field(default=60, ge=1)
+
+
+class GatewayBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    base_url: str | None = None
+
+
+class RoutingBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    master_agent_id: str | None = None
+
+
+class RegistryBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    path: str | None = None
+
+
+class ServiceSettings(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    service: ServiceBlock = Field(default_factory=ServiceBlock)
+    server: ServerBlock = Field(default_factory=ServerBlock)
+    redis: RedisBlock = Field(default_factory=RedisBlock)
+    runtime: RuntimeBlock = Field(default_factory=RuntimeBlock)
+    auth: AuthBlock = Field(default_factory=AuthBlock)
+    files: FilesBlock = Field(default_factory=FilesBlock)
+    logging: LoggingBlock = Field(default_factory=LoggingBlock)
+    timeouts: TimeoutsBlock = Field(default_factory=TimeoutsBlock)
+    gateway: GatewayBlock | None = None
+    routing: RoutingBlock | None = None
+    registry: RegistryBlock | None = None
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -35,7 +140,12 @@ def load_service_config(service_conf_dir: Path, env: str = "dev") -> dict[str, A
         service_conf_dir / f"{env}.yaml",
     ):
         config = deep_merge(config, load_yaml_file(path))
-    return config
+    return validate_service_config(config)
+
+
+def validate_service_config(config: dict[str, Any]) -> dict[str, Any]:
+    settings = ServiceSettings.model_validate(config)
+    return settings.model_dump(mode="python", exclude_none=True)
 
 
 def _load_minimal_yaml(path: Path) -> dict[str, Any]:

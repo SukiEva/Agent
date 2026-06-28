@@ -25,6 +25,7 @@ def main() -> int:
         "tests/test_agent_core_stores.py",
         "tests/test_auth.py",
         "tests/test_cancel_events.py",
+        "tests/test_config.py",
         "tests/test_files.py",
         "tests/test_agent_server_files.py",
         "tests/test_logging.py",
