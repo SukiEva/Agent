@@ -17,10 +17,17 @@ Python packages are managed with `uv workspace`.
 
 ```bash
 uv sync
+docker compose -f deploy/docker-compose.yml up -d redis
 uv run --package agent-server agent-server
 uv run --package agent-gateway agent-gateway
 uv run --package master-agent master-agent
 uv run --package demo-business-agent demo-business-agent
+```
+
+To start the four Python services in one terminal:
+
+```bash
+python scripts/dev_services.py
 ```
 
 With the four services running, verify the backend path:
@@ -29,11 +36,33 @@ With the four services running, verify the backend path:
 python scripts/smoke_backend.py
 ```
 
+Run the local non-network checks:
+
+```bash
+python scripts/verify_all.py
+```
+
 Agent Server defaults to the in-memory runtime store for local development. To use Redis-backed runtime state, run Agent Server with:
 
 ```bash
 AGENT_RUNTIME_STORE=redis uv run --package agent-server agent-server
 ```
+
+User and internal auth default to noop for local development. They can be switched through environment variables:
+
+```bash
+AGENT_USER_AUTH_MODE=header
+AGENT_INTERNAL_AUTH_MODE=shared_secret
+AGENT_INTERNAL_AUTH_SECRET=dev-secret
+```
+
+Files are stored through the local FileStore by default:
+
+```bash
+AGENT_FILE_STORE_ROOT=.data/files
+```
+
+Upload files through `POST /api/files`, then pass returned `file_id` metadata in `POST /api/runs` attachments.
 
 ## Frontend
 

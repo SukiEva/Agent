@@ -47,6 +47,13 @@ type UiRender = {
   };
 };
 
+type AttachmentRef = {
+  file_id: string;
+  name: string;
+  mime_type?: string | null;
+  size_bytes?: number | null;
+};
+
 const apiBase = import.meta.env.VITE_AGENT_SERVER_URL ?? "http://localhost:8000";
 
 const conversation = ref<Conversation | null>(null);
@@ -61,6 +68,7 @@ const messages = ref<Message[]>([]);
 const progressEvents = ref<ProgressEvent[]>([]);
 const toolCalls = ref<ToolCall[]>([]);
 const uiRenders = ref<UiRender[]>([]);
+const attachments = ref<AttachmentRef[]>([]);
 const error = ref<string | null>(null);
 
 let source: EventSource | null = null;
@@ -122,7 +130,7 @@ async function startRun() {
       content: input.value,
     },
     selected_agent_id: selectedAgentId.value || null,
-    attachments: [],
+    attachments: attachments.value,
     context: bridgeEnabled.value
       ? {
           bridge: {
@@ -134,6 +142,31 @@ async function startRun() {
       : {},
   });
   runId.value = response.run_id;
+}
+
+async function uploadAttachment(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  error.value = null;
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetch(`${apiBase}/api/files`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!response.ok) throw new Error(await response.text());
+    attachments.value.push((await response.json()) as AttachmentRef);
+  } catch (unknownError) {
+    error.value = errorMessage(unknownError);
+  } finally {
+    input.value = "";
+  }
+}
+
+function removeAttachment(fileId: string) {
+  attachments.value = attachments.value.filter((attachment) => attachment.file_id !== fileId);
 }
 
 async function cancelRun() {
@@ -316,6 +349,17 @@ function errorMessage(unknownError: unknown): string {
       <section class="main-pane">
         <div class="composer">
           <textarea v-model="input" rows="4" />
+          <div class="attachments">
+            <label class="file-button">
+              <input type="file" @change="uploadAttachment" />
+              <span>Add file</span>
+            </label>
+            <div v-for="attachment in attachments" :key="attachment.file_id" class="attachment">
+              <span>{{ attachment.name }}</span>
+              <small>{{ attachment.size_bytes ?? 0 }} bytes</small>
+              <button type="button" class="icon-button" @click="removeAttachment(attachment.file_id)">x</button>
+            </div>
+          </div>
           <div class="composer-actions">
             <label class="toggle">
               <input v-model="bridgeEnabled" type="checkbox" />
@@ -509,6 +553,47 @@ textarea {
   margin-top: 12px;
 }
 
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.file-button {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  border: 1px solid #cbd3dd;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #f8fafc;
+  color: #344253;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.file-button input {
+  display: none;
+}
+
+.attachment {
+  display: inline-grid;
+  grid-template-columns: auto auto 24px;
+  gap: 8px;
+  align-items: center;
+  min-height: 30px;
+  border: 1px solid #d9dee5;
+  border-radius: 8px;
+  padding: 0 4px 0 10px;
+  background: #ffffff;
+  font-size: 13px;
+}
+
+.attachment small {
+  color: #687385;
+}
+
 .toggle {
   display: inline-flex;
   gap: 8px;
@@ -537,6 +622,15 @@ button.secondary {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.icon-button {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  padding: 0;
+  background: #edf0f4;
+  color: #344253;
 }
 
 .error {

@@ -88,6 +88,33 @@ def run_case(*, bridge: bool) -> list[str]:
     return types
 
 
+def run_cancel_case() -> list[str]:
+    conversation = request("POST", "/api/conversations")
+    assert isinstance(conversation, dict)
+    run = request(
+        "POST",
+        "/api/runs",
+        {
+            "conversation_id": conversation["conversation_id"],
+            "client_id": conversation["client_id"],
+            "message": {"type": "text", "content": "run cancel demo"},
+            "selected_agent_id": "demo_business_agent",
+            "attachments": [],
+            "context": {"demo_delay_ms": 500},
+        },
+    )
+    assert isinstance(run, dict)
+    request("POST", f"/api/runs/{run['run_id']}/cancel", {})
+    events = read_sse_until(str(conversation["conversation_id"]), stop_type="RUN_ERROR")
+    types = [str(event["type"]) for event in events]
+    errors = [event for event in events if event["type"] == "RUN_ERROR"]
+    if not errors or errors[-1].get("code") != "RUN_CANCEL_REQUESTED":
+        raise RuntimeError(f"missing cancel event; saw {events}")
+    if "RUN_FINISHED" in types:
+        raise RuntimeError(f"cancelled run unexpectedly finished; saw {types}")
+    return types
+
+
 def main() -> None:
     capabilities = request("GET", "/api/capabilities")
     if not capabilities:
@@ -95,6 +122,7 @@ def main() -> None:
     print("capabilities ok")
     print("normal", run_case(bridge=False))
     print("bridge", run_case(bridge=True))
+    print("cancel", run_cancel_case())
 
 
 if __name__ == "__main__":

@@ -1,0 +1,38 @@
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+NODE_BIN = Path.home() / ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin"
+
+
+def run(command: list[str], cwd: Path = ROOT, env: dict[str, str] | None = None) -> None:
+    print("+", " ".join(command))
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
+    subprocess.run(command, cwd=cwd, env=merged_env, check=True)
+
+
+def main() -> int:
+    run(["./.venv/bin/python", "-m", "compileall", "apps", "packages", "scripts", "tests"])
+    for test in (
+        "tests/test_agent_core_stores.py",
+        "tests/test_auth.py",
+        "tests/test_cancel_events.py",
+        "tests/test_files.py",
+        "tests/test_agent_server_files.py",
+    ):
+        run(["./.venv/bin/python", test])
+
+    env = {"PATH": f"{NODE_BIN}:{os.environ.get('PATH', '')}"}
+    run(["./node_modules/.bin/vue-tsc", "-b"], cwd=ROOT / "web", env=env)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -6,6 +6,15 @@ runtime:
   ttl_seconds: 3600
   event_maxlen: 1000
 
+auth:
+  user:
+    mode: noop
+  internal:
+    mode: noop
+
+files:
+  local_root: .data/files
+
 logging:
   level: INFO
   format: json

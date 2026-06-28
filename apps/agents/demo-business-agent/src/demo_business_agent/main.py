@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
 from agent_core.config import load_service_config
+from agent_core.schemas.errors import AgentError
 from agent_core.schemas.business import BusinessProgressEvent, BusinessResultEnvelope, DeliveryDirective
 from agent_core.schemas.ui import UiDescriptor, UiFallback
 from agent_core.serialization import json_line, to_dict
@@ -24,6 +25,7 @@ def _settings() -> dict[str, Any]:
 def create_app() -> FastAPI:
     app = FastAPI(title="Demo Business Agent")
     app.state.settings = _settings()
+    app.state.cancelled_tasks = set()
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -47,13 +49,20 @@ def create_app() -> FastAPI:
             run_id = payload["run_id"]
             task_id = payload["task_id"]
             agent_id = app.state.settings["agent"]["id"]
+            delay_ms = int(payload.get("context", {}).get("demo_delay_ms", 100))
             progress_messages = [
                 "Demo agent accepted the task.",
                 "Demo agent is preparing a component descriptor.",
                 "Demo agent completed the fake business result.",
             ]
             for message in progress_messages:
-                await asyncio.sleep(0.1)
+                if _is_cancelled(app, task_id):
+                    yield json_line(_cancelled_event(agent_id, run_id, task_id))
+                    return
+                await asyncio.sleep(delay_ms / 1000)
+                if _is_cancelled(app, task_id):
+                    yield json_line(_cancelled_event(agent_id, run_id, task_id))
+                    return
                 yield json_line(
                     to_dict(
                         BusinessProgressEvent(
@@ -64,7 +73,13 @@ def create_app() -> FastAPI:
                         )
                     )
                 )
+            if _is_cancelled(app, task_id):
+                yield json_line(_cancelled_event(agent_id, run_id, task_id))
+                return
             bridge_result = await _maybe_call_frontend_bridge(app, payload)
+            if _is_cancelled(app, task_id):
+                yield json_line(_cancelled_event(agent_id, run_id, task_id))
+                return
             envelope = BusinessResultEnvelope(
                 status="completed",
                 agent_id=agent_id,
@@ -97,9 +112,32 @@ def create_app() -> FastAPI:
 
     @app.post("/a2a/tasks/{task_id}/cancel")
     async def cancel_task(task_id: str) -> dict[str, object]:
+        app.state.cancelled_tasks.add(task_id)
         return {"status": "cancel_requested", "task_id": task_id}
 
     return app
+
+
+def _is_cancelled(app: FastAPI, task_id: str) -> bool:
+    return task_id in app.state.cancelled_tasks
+
+
+def _cancelled_event(agent_id: str, run_id: str, task_id: str) -> dict[str, object]:
+    return {
+        "type": "business.error",
+        "agent_id": agent_id,
+        "run_id": run_id,
+        "task_id": task_id,
+        "error": to_dict(
+            AgentError(
+                code="TASK_CANCELLED",
+                message="Task was cancelled.",
+                recoverable=True,
+                retryable=True,
+                cancelled=True,
+            )
+        ),
+    }
 
 
 async def _maybe_call_frontend_bridge(app: FastAPI, payload: dict[str, Any]) -> dict[str, object] | None:

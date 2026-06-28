@@ -13,3 +13,13 @@ routing:
 
 runtime:
   store: ${oc.env:AGENT_RUNTIME_STORE,memory}
+
+auth:
+  user:
+    mode: ${oc.env:AGENT_USER_AUTH_MODE,noop}
+  internal:
+    mode: ${oc.env:AGENT_INTERNAL_AUTH_MODE,noop}
+    secret: ${oc.env:AGENT_INTERNAL_AUTH_SECRET,""}
+
+files:
+  local_root: ${oc.env:AGENT_FILE_STORE_ROOT,.data/files}
