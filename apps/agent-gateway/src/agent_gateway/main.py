@@ -56,14 +56,14 @@ def create_app() -> FastAPI:
 
     @app.get("/agents")
     async def agents() -> list[dict[str, object]]:
-        return [_dump_agent(agent) for agent in app.state.registry.values()]
+        return [await _probe_agent(agent) for agent in app.state.registry.values()]
 
     @app.get("/agents/{agent_id}")
     async def agent(agent_id: str) -> dict[str, object]:
         agent_ref = app.state.registry.get(agent_id)
         if not agent_ref:
             raise HTTPException(status_code=404, detail="agent not found")
-        return _dump_agent(agent_ref)
+        return await _probe_agent(agent_ref)
 
     @app.post("/a2a/{agent_id}/tasks")
     async def create_task(agent_id: str, request: Request) -> StreamingResponse:
@@ -104,6 +104,49 @@ def _dump_agent(agent: AgentRef) -> dict[str, object]:
     if hasattr(agent, "model_dump"):
         return agent.model_dump(mode="json")
     return agent.dict()
+
+
+async def _probe_agent(agent: AgentRef) -> dict[str, object]:
+    dumped = _dump_agent(agent)
+    card_url = dumped.get("card_url")
+    if not card_url:
+        return dumped
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=2, trust_env=False) as client:
+            response = await client.get(str(card_url))
+            response.raise_for_status()
+        card = response.json()
+    except Exception as exc:
+        dumped["healthy"] = False
+        dumped["last_error"] = str(exc)
+        return dumped
+
+    dumped["healthy"] = True
+    dumped["last_error"] = None
+    dumped["metadata"] = {**dict(dumped.get("metadata") or {}), "agent_card": card}
+    card_skills = _capabilities_from_agent_card(card)
+    if card_skills:
+        dumped["capabilities"] = card_skills
+    return dumped
+
+
+def _capabilities_from_agent_card(card: dict[str, Any]) -> list[dict[str, str]]:
+    capabilities: list[dict[str, str]] = []
+    for skill in card.get("skills", []) or []:
+        if not isinstance(skill, dict):
+            continue
+        skill_id = skill.get("id") or skill.get("name")
+        if not skill_id:
+            continue
+        capabilities.append(
+            {
+                "name": str(skill_id),
+                "description": str(skill.get("description") or ""),
+            }
+        )
+    return capabilities
 
 
 app = create_app()
