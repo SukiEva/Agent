@@ -30,7 +30,13 @@ To start the four Python services in one terminal:
 python scripts/dev_services.py
 ```
 
-With the four services running, verify the backend path:
+The script waits for each service's `/health` endpoint before reporting success. To start the services, run the backend smoke test, and stop afterward:
+
+```bash
+python scripts/dev_services.py --smoke --exit-after-smoke
+```
+
+With the four services already running, verify the backend path:
 
 ```bash
 python scripts/smoke_backend.py
