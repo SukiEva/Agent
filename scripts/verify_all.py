@@ -30,6 +30,7 @@ def main() -> int:
         "tests/test_files.py",
         "tests/test_agent_server_files.py",
         "tests/test_logging.py",
+        "tests/test_server.py",
     ):
         run(["./.venv/bin/python", test])
 

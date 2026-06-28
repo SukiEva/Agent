@@ -18,6 +18,7 @@ from agent_core.events import (
 from agent_core.ids import new_message_id
 from agent_core.logging import configure_service_logging
 from agent_core.serialization import json_line, parse_json_line
+from agent_core.server import hypercorn_bind
 from agent_core.stores import create_runtime_stores
 
 
@@ -199,5 +200,5 @@ def main() -> None:
     import asyncio
 
     config = hypercorn.config.Config()
-    config.bind = ["0.0.0.0:8010"]
+    config.bind = hypercorn_bind(app.state.settings)
     asyncio.run(hypercorn.asyncio.serve(app, config))

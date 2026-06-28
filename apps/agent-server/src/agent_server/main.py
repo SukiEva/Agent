@@ -27,6 +27,7 @@ from agent_core.logging import configure_service_logging
 from agent_core.schemas.bridge import ClientActionCreate, ClientActionRequest, ClientActionResult
 from agent_core.schemas.run import BusinessTaskRequest, RunRequest
 from agent_core.serialization import parse_json_line, to_dict
+from agent_core.server import hypercorn_bind
 from agent_core.stores import RuntimeStores, create_runtime_stores
 
 
@@ -276,5 +277,5 @@ def main() -> None:
     import asyncio
 
     config = hypercorn.config.Config()
-    config.bind = ["0.0.0.0:8000"]
+    config.bind = hypercorn_bind(app.state.settings)
     asyncio.run(hypercorn.asyncio.serve(app, config))

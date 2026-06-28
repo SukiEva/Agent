@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from agent_core.config import load_service_config
 from agent_core.logging import configure_service_logging
 from agent_core.schemas.agent import AgentRef
+from agent_core.server import hypercorn_bind
 
 
 def _conf_dir() -> Path:
@@ -158,5 +159,5 @@ def main() -> None:
     import asyncio
 
     config = hypercorn.config.Config()
-    config.bind = ["0.0.0.0:8001"]
+    config.bind = hypercorn_bind(app.state.settings)
     asyncio.run(hypercorn.asyncio.serve(app, config))

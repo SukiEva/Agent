@@ -15,6 +15,7 @@ from agent_core.schemas.errors import AgentError
 from agent_core.schemas.business import BusinessProgressEvent, BusinessResultEnvelope, DeliveryDirective
 from agent_core.schemas.ui import UiDescriptor, UiFallback
 from agent_core.serialization import json_line, to_dict
+from agent_core.server import hypercorn_bind
 from agent_core.stores import create_runtime_stores
 
 
@@ -214,5 +215,5 @@ def main() -> None:
     import asyncio
 
     config = hypercorn.config.Config()
-    config.bind = ["0.0.0.0:8011"]
+    config.bind = hypercorn_bind(app.state.settings)
     asyncio.run(hypercorn.asyncio.serve(app, config))
