@@ -19,6 +19,17 @@ def run(command: list[str], cwd: Path = ROOT, env: dict[str, str] | None = None)
 
 def main() -> int:
     run(["./.venv/bin/python", "-m", "compileall", "apps", "packages", "scripts", "tests"])
+    run(
+        [
+            "uv",
+            "build",
+            "--all-packages",
+            "--out-dir",
+            "/tmp/agent-mvp-build",
+            "--no-create-gitignore",
+        ],
+        env={"UV_CACHE_DIR": "/tmp/agent-uv-cache"},
+    )
     for test in (
         "tests/test_a2a_cards.py",
         "tests/test_agent_gateway.py",
@@ -38,6 +49,7 @@ def main() -> int:
         "tests/test_redis_stores.py",
         "tests/test_server.py",
         "tests/test_ui_contracts.py",
+        "tests/test_verify_all.py",
         "tests/test_verify_mvp.py",
     ):
         run(["./.venv/bin/python", test])

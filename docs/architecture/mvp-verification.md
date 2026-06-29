@@ -7,6 +7,7 @@ This document maps the MVP scope to concrete verification evidence.
 | Requirement | Evidence |
 | --- | --- |
 | Vue 3 validation frontend | `bun run web:typecheck`, `bun run web:build`, frontend runtime event tests in `scripts/verify_all.py` |
+| Backend package build | `uv build --all-packages` in `scripts/verify_all.py` |
 | Agent Server HTTP APIs and SSE | `scripts/dev_services.py --smoke --exit-after-smoke`, `tests/test_agent_server_auth.py`, `tests/test_agent_server_files.py` |
 | Agent Gateway static registry and `/agents` | `tests/test_agent_gateway.py`, backend smoke `capabilities ok` |
 | `master_agent` as routable A2A agent | backend smoke routes all runs through `/a2a/master_agent/tasks` |
