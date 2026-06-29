@@ -43,6 +43,8 @@ docker compose -f deploy/docker-compose.yml up -d redis
 python scripts/dev_services.py --runtime-store redis --smoke --exit-after-smoke
 ```
 
+`dev_services.py --runtime-store redis` checks Redis reachability before starting services. Use `--redis-url` or `AGENT_REDIS_URL` when Redis is not on `redis://localhost:6379/0`.
+
 With the four services already running, verify the backend path:
 
 ```bash
@@ -62,6 +64,8 @@ AGENT_RUNTIME_STORE=redis uv run --package agent-server agent-server
 AGENT_RUNTIME_STORE=redis uv run --package master-agent master-agent
 AGENT_RUNTIME_STORE=redis uv run --package demo-business-agent demo-business-agent
 ```
+
+Set `AGENT_REDIS_URL` to override the default Redis URL.
 
 User and internal auth default to noop for local development. They can be switched through environment variables:
 

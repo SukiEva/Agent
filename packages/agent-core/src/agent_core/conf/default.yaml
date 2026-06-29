@@ -1,5 +1,5 @@
 redis:
-  url: redis://localhost:6379/0
+  url: ${oc.env:AGENT_REDIS_URL,redis://localhost:6379/0}
 
 runtime:
   store: ${oc.env:AGENT_RUNTIME_STORE,memory}

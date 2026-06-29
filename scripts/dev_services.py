@@ -45,6 +45,11 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("AGENT_RUNTIME_STORE", "memory"),
         help="Runtime store to pass to all services.",
     )
+    parser.add_argument(
+        "--redis-url",
+        default=os.environ.get("AGENT_REDIS_URL", "redis://localhost:6379/0"),
+        help="Redis URL used when --runtime-store redis is selected.",
+    )
     parser.add_argument("--smoke", action="store_true", help="Run scripts/smoke_backend.py after all services are healthy.")
     parser.add_argument("--exit-after-smoke", action="store_true", help="Stop services after --smoke completes.")
     return parser.parse_args()
@@ -69,6 +74,10 @@ def main() -> int:
     signal.signal(signal.SIGTERM, stop)
     child_env = os.environ.copy()
     child_env["AGENT_RUNTIME_STORE"] = args.runtime_store
+    child_env["AGENT_REDIS_URL"] = args.redis_url
+
+    if args.runtime_store == "redis" and not check_redis(args.redis_url):
+        return 1
 
     try:
         for service in SERVICES:
@@ -133,6 +142,20 @@ def is_healthy(service: Service) -> bool:
         return False
     finally:
         conn.close()
+
+
+def check_redis(redis_url: str) -> bool:
+    try:
+        import redis
+
+        client = redis.Redis.from_url(redis_url, socket_connect_timeout=1, socket_timeout=1)
+        client.ping()
+        client.close()
+    except Exception as exc:
+        log(f"redis is not reachable at {redis_url}: {exc}")
+        log("start Redis first, for example: docker compose -f deploy/docker-compose.yml up -d redis")
+        return False
+    return True
 
 
 def run_smoke() -> int:
