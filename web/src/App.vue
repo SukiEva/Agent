@@ -65,7 +65,7 @@ async function bootstrap() {
 
 async function loadCapabilities() {
   capabilities.value = await get<Capability[]>("/api/capabilities");
-  selectedAgentId.value = capabilities.value.find((capability) => capability.available)?.agent_id ?? "";
+  selectedAgentId.value = "";
 }
 
 function connectEvents() {
@@ -254,6 +254,7 @@ function authQueryString(path = ""): string {
         <label class="field">
           <span>Business agent</span>
           <select v-model="selectedAgentId">
+            <option value="">Automatic</option>
             <option v-for="capability in capabilities" :key="capability.agent_id" :value="capability.agent_id">
               {{ capability.label }}
             </option>
