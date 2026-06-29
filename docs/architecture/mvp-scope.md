@@ -1,5 +1,7 @@
 # MVP Scope
 
+The current codebase has implemented the communication skeleton MVP. The remaining work required for a real model-backed MVP is defined in [Real MVP Design](real-mvp-design.md).
+
 ## Included
 
 - Vue 3 validation frontend.

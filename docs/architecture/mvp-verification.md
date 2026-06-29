@@ -2,6 +2,8 @@
 
 This document maps the MVP scope to concrete verification evidence.
 
+The current matrix verifies the communication skeleton MVP. The remaining real model-backed gates are defined in [Real MVP Design](real-mvp-design.md).
+
 ## Verified Locally
 
 | Requirement | Evidence |
