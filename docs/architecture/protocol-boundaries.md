@@ -29,16 +29,15 @@ Agent Server calls Agent Gateway for:
 
 - Capability listing.
 - Creating the root task for `master_agent`.
-- Task status.
 - Cancellation.
 
 Agent Server does not know individual business agent addresses.
 
 ## Agent Gateway to Agents
 
-Agent Gateway routes standard A2A traffic to fasta2a-based agent services.
+Agent Gateway routes the MVP A2A task traffic to fasta2a-based agent services.
 
-Gateway parses A2A protocol envelopes for routing, health, error handling, timeouts, and metrics. It does not parse business payloads.
+Gateway validates route targets, discovers Agent Cards, forwards task streams, forwards cancellation requests, and preserves downstream error status. It does not parse business payloads.
 
 ## Master Agent to Business Agents
 
@@ -54,7 +53,7 @@ Business agents do not directly emit AG-UI events as their public result protoco
 
 ## PydanticAI and AG-UI
 
-PydanticAI's AG-UI adapter should be used inside agent services where it fits agent runtime event conversion.
+PydanticAI's AG-UI adapter can be used inside agent services where it fits agent runtime event conversion.
 
 Agent Server still owns Redis-backed SSE delivery and replay. It should not expose PydanticAI `dispatch_request()` directly to the browser because that would bypass:
 

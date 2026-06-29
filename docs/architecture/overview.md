@@ -4,7 +4,7 @@
 
 Build a real-time agent application with a Vue 3 frontend, an Agent Server entrypoint, a thin A2A Agent Gateway, and independently deployable business agents implemented in Python with PydanticAI and fasta2a.
 
-The system optimizes for real-time task execution, not long-term chat history. Redis Cluster is the core coordination layer for online sessions, short replay windows, bridge actions, task ownership, cancellation, and runtime state.
+The system optimizes for real-time task execution, not long-term chat history. Redis Cluster is the core coordination layer for online sessions, short replay windows, bridge actions, cancellation, and runtime state.
 
 ## Components
 
@@ -47,9 +47,8 @@ It owns:
 - Agent Card discovery and caching.
 - `/agents` directory APIs.
 - A2A request routing.
-- A2A envelope-level validation.
 - Downstream health status.
-- Protocol-level timeout, cancellation, and error normalization.
+- Route-level validation, cancellation forwarding, and downstream error preservation.
 
 It does not own:
 

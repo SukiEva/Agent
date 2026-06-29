@@ -6,11 +6,11 @@ Accepted
 
 ## Context
 
-The system has multiple independently deployable agents. Agents need a common task protocol, Agent Card discovery, streaming events, status checks, and cancellation.
+The system has multiple independently deployable agents. Agents need a common task protocol, Agent Card discovery, streaming events, and cancellation.
 
 ## Decision
 
-Use standard A2A for Agent Server to `master_agent` and `master_agent` to business agent communication. Agent services are built with fasta2a. Agent Gateway routes A2A requests and parses only A2A envelopes.
+Use A2A for Agent Server to `master_agent` and `master_agent` to business agent communication. Agent services are built with fasta2a and expose Agent Cards. Agent Gateway routes task traffic without parsing business payloads.
 
 ## Consequences
 
