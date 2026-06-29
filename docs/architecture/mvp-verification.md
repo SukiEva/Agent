@@ -53,9 +53,20 @@ docker compose -f deploy/docker-compose.yml up -d redis
 python scripts/verify_mvp.py --redis required
 ```
 
+`verify_mvp.py --redis required` first checks the configured Redis URL. If Redis is not reachable, it can start a temporary Redis using a local `redis-server` executable or Docker Compose when available:
+
+```bash
+python scripts/verify_mvp.py --redis required --redis-start auto
+python scripts/verify_mvp.py --redis required --redis-start redis-server
+python scripts/verify_mvp.py --redis required --redis-start docker-compose
+python scripts/verify_mvp.py --redis required --redis-start none
+```
+
+Use `--redis-start none` when Redis is provided by CI services or external infrastructure and the verifier should not start a local Redis process.
+
 ## Current External Gap
 
-The local environment used for this verification did not provide Docker, `redis-server`, or `redis-cli`, so the Redis-backed end-to-end smoke could not be executed here.
+The local environment used for this verification did not provide Docker, `redis-server`, or `redis-cli`, so the Redis-backed end-to-end smoke could not be executed here. The verifier now supports automatic temporary Redis startup when either `redis-server` or Docker is available.
 
 The repository includes:
 
