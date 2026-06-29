@@ -11,6 +11,8 @@ This repository is a scaffold for a real-time agent system with:
 
 Architecture decisions live in `docs/architecture` and `docs/adr`.
 
+MVP verification evidence is tracked in `docs/architecture/mvp-verification.md`.
+
 ## Python Workspace
 
 Python packages are managed with `uv workspace`.
