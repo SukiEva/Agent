@@ -128,7 +128,7 @@ def user_auth_query() -> str:
     return f"?{urlencode(params)}" if params else ""
 
 
-def run_case(*, bridge: bool) -> list[str]:
+def run_case(*, bridge: bool, selected_agent_id: str | None = "demo_business_agent") -> list[str]:
     conversation = request("POST", "/api/conversations")
     assert isinstance(conversation, dict)
     context: dict[str, Any] = {}
@@ -141,7 +141,7 @@ def run_case(*, bridge: bool) -> list[str]:
             "conversation_id": conversation["conversation_id"],
             "client_id": conversation["client_id"],
             "message": {"type": "text", "content": "run bridge demo" if bridge else "run demo task"},
-            "selected_agent_id": "demo_business_agent",
+            "selected_agent_id": selected_agent_id,
             "attachments": [],
             "context": context,
         },
@@ -155,6 +155,14 @@ def run_case(*, bridge: bool) -> list[str]:
     missing = required - set(types)
     if missing:
         raise RuntimeError(f"missing events for bridge={bridge}: {sorted(missing)}; saw {types}")
+    if selected_agent_id is None:
+        progress_agents = {
+            str(event.get("value", {}).get("agent_id"))
+            for event in events
+            if event.get("type") == "CUSTOM" and event.get("name") == "business.progress"
+        }
+        if "demo_business_agent" not in progress_agents:
+            raise RuntimeError(f"automatic routing did not reach demo_business_agent; saw {events}")
     return types
 
 
@@ -258,6 +266,7 @@ def main() -> None:
         raise RuntimeError("no capabilities returned")
     print("capabilities ok")
     print("normal", run_case(bridge=False))
+    print("auto-route", run_case(bridge=False, selected_agent_id=None))
     print("replay", run_replay_case())
     print("attachment", run_attachment_case())
     print("bridge", run_case(bridge=True))
