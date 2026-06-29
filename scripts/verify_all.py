@@ -7,7 +7,6 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-NODE_BIN = Path.home() / ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin"
 
 
 def run(command: list[str], cwd: Path = ROOT, env: dict[str, str] | None = None) -> None:
@@ -43,10 +42,9 @@ def main() -> int:
     ):
         run(["./.venv/bin/python", test])
 
-    env = {"PATH": f"{NODE_BIN}:{os.environ.get('PATH', '')}"}
-    run(["bun", "src/runtime/events.test.ts"], cwd=ROOT / "web", env=env)
-    run(["./node_modules/.bin/vue-tsc", "-b"], cwd=ROOT / "web", env=env)
-    run(["bun", "run", "web:build"], env=env)
+    run(["bun", "src/runtime/events.test.ts"], cwd=ROOT / "web")
+    run(["bun", "run", "web:typecheck"])
+    run(["bun", "run", "web:build"])
     return 0
 
 
