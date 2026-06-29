@@ -5,6 +5,9 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
+from pydantic_ai import Agent
+from pydantic_ai.models.test import TestModel
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT / "apps" / "agents" / "master-agent" / "src"))
 
@@ -47,7 +50,15 @@ def test_master_agent_model_routing_selects_valid_agent() -> None:
         {"agent_id": "invoice_agent", "role": "business", "capabilities": []},
         {"agent_id": "contract_agent", "role": "business", "capabilities": []},
     ]
-    agent = FakeAgent(RouteDecision(target_agent_id="contract_agent", confidence=0.9, reason="contract request"))
+    agent = Agent(
+        TestModel(
+            custom_output_args={
+                "target_agent_id": "contract_agent",
+                "confidence": 0.9,
+                "reason": "contract request",
+            }
+        )
+    )
 
     selected = asyncio.run(
         _select_business_agent_with_model(
@@ -59,7 +70,6 @@ def test_master_agent_model_routing_selects_valid_agent() -> None:
     )
 
     assert selected == "contract_agent"
-    assert agent.calls == 1
 
 
 def test_master_agent_invalid_model_route_falls_back_to_token_matching() -> None:

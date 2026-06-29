@@ -24,6 +24,7 @@ from agent_core.serialization import json_line, parse_json_line
 from agent_core.server import hypercorn_bind
 from agent_core.stores import create_runtime_stores
 
+
 class RouteDecision(BaseModel):
     target_agent_id: str
     confidence: float = Field(ge=0.0, le=1.0)
@@ -184,6 +185,7 @@ def _agent_output(result: Any) -> Any:
 
 def _is_valid_agent_id(agent_id: str, agents: list[dict[str, Any]]) -> bool:
     return agent_id in {str(agent["agent_id"]) for agent in agents}
+
 
 async def _load_business_agents(app: FastAPI) -> list[dict[str, Any]]:
     import httpx

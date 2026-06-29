@@ -6,6 +6,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from pydantic_ai import Agent
+from pydantic_ai.models.test import TestModel
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT / "apps" / "agents" / "demo-business-agent" / "src"))
@@ -33,8 +36,10 @@ def test_demo_business_model_output_is_wrapped_in_result_envelope() -> None:
 
 
 def test_demo_business_agent_calls_model_when_enabled() -> None:
-    fake_agent = FakeAgent(DemoBusinessResult(summary="Generated", items=["A"], ui_title="Generated UI"))
-    app = SimpleNamespace(state=SimpleNamespace(settings=_model_settings(), pydantic_agent=fake_agent))
+    pydantic_agent = Agent(
+        TestModel(custom_output_args={"summary": "Generated", "items": ["A"], "ui_title": "Generated UI"})
+    )
+    app = SimpleNamespace(state=SimpleNamespace(settings=_model_settings(), pydantic_agent=pydantic_agent))
 
     result = asyncio.run(
         demo_main._generate_business_result(
@@ -46,7 +51,6 @@ def test_demo_business_agent_calls_model_when_enabled() -> None:
     )
 
     assert result.summary == "Generated"
-    assert fake_agent.calls == 1
 
 
 def test_demo_business_agent_falls_back_when_model_fails() -> None:
@@ -88,17 +92,6 @@ def test_frontend_bridge_tool_uses_current_context() -> None:
 
     assert result == {"status": "completed", "value": "ok"}
     assert calls[0][2:] == ("get_selected_text", {"trim": True}, 1234)
-
-
-class FakeAgent:
-    def __init__(self, output: object) -> None:
-        self.output = output
-        self.calls = 0
-
-    async def run(self, _prompt: str, *, output_type: object) -> object:
-        self.calls += 1
-        assert output_type is DemoBusinessResult
-        return SimpleNamespace(output=self.output)
 
 
 class FailingAgent:

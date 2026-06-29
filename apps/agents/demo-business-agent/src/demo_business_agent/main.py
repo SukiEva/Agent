@@ -241,6 +241,7 @@ def _agent_output(result: Any) -> Any:
             return getattr(result, attr)
     return result
 
+
 def _user_message_text(payload: dict[str, Any]) -> str:
     message = payload.get("user_message")
     if isinstance(message, dict):
