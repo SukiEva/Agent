@@ -27,19 +27,15 @@ def test_mvp_workflow_runs_redis_backed_smoke() -> None:
 
     assert redis["image"] == "redis:7-alpine"
     assert "6379:6379" in redis["ports"]
-    assert "Run Redis-backed backend smoke" in step_names
-    assert any("scripts/dev_services.py --runtime-store redis --smoke --exit-after-smoke" in command for command in run_commands)
+    assert "Run MVP verification suite" in step_names
+    assert any("scripts/verify_mvp.py --redis required" in command for command in run_commands)
 
 
 def test_mvp_workflow_runs_local_suite_and_memory_smoke() -> None:
     verify_job = _load_workflow()["jobs"]["verify"]
-    step_names = _step_names(verify_job)
     run_commands = _run_commands(verify_job)
 
-    assert "Run local verification suite" in step_names
-    assert "Run in-memory backend smoke" in step_names
-    assert any("scripts/verify_all.py" in command for command in run_commands)
-    assert any("scripts/dev_services.py --smoke --exit-after-smoke" in command for command in run_commands)
+    assert any("scripts/verify_mvp.py" in command for command in run_commands)
 
 
 def _load_workflow() -> dict[str, object]:

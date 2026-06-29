@@ -39,13 +39,7 @@ jobs:
       - name: Install frontend dependencies
         run: bun install
 
-      - name: Run local verification suite
-        run: ./.venv/bin/python scripts/verify_all.py
-
-      - name: Run in-memory backend smoke
-        run: ./.venv/bin/python scripts/dev_services.py --smoke --exit-after-smoke
-
-      - name: Run Redis-backed backend smoke
+      - name: Run MVP verification suite
         env:
           AGENT_REDIS_URL: redis://localhost:6379/0
-        run: ./.venv/bin/python scripts/dev_services.py --runtime-store redis --smoke --exit-after-smoke
+        run: ./.venv/bin/python scripts/verify_mvp.py --redis required

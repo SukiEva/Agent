@@ -31,21 +31,20 @@ This document maps the MVP scope to concrete verification evidence.
 ```bash
 python scripts/verify_all.py
 python scripts/dev_services.py --smoke --exit-after-smoke
+python scripts/verify_mvp.py
 ```
 
 ## CI Verification
 
 `.github/workflows/mvp.yml` runs the same verification suite in GitHub Actions, including a Redis service-backed smoke:
 
-- `python scripts/verify_all.py`
-- `python scripts/dev_services.py --smoke --exit-after-smoke`
-- `python scripts/dev_services.py --runtime-store redis --smoke --exit-after-smoke`
+- `python scripts/verify_mvp.py --redis required`
 
 For Redis-backed runtime state:
 
 ```bash
 docker compose -f deploy/docker-compose.yml up -d redis
-python scripts/dev_services.py --runtime-store redis --smoke --exit-after-smoke
+python scripts/verify_mvp.py --redis required
 ```
 
 ## Current External Gap

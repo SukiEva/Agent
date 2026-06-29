@@ -59,6 +59,12 @@ Run the local non-network checks:
 python scripts/verify_all.py
 ```
 
+Run the full MVP verification flow, including the local backend smoke. It will skip Redis-backed smoke when Redis is not reachable:
+
+```bash
+python scripts/verify_mvp.py
+```
+
 The local stack defaults to the in-memory runtime store. To use Redis-backed runtime state without `dev_services.py`, set `AGENT_RUNTIME_STORE=redis` for Agent Server, master agent, and business agents:
 
 ```bash
