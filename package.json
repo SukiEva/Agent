@@ -7,10 +7,10 @@
     "packages/agent-ui-contracts"
   ],
   "scripts": {
-    "web:dev": "bun --filter agent-web run dev",
-    "web:build": "bun --filter agent-web run build",
-    "web:typecheck": "bun --filter agent-web run typecheck",
-    "web:preview": "bun --filter agent-web run preview"
+    "web:dev": "cd web && bun run dev",
+    "web:build": "cd web && bun run build",
+    "web:typecheck": "cd web && bun run typecheck",
+    "web:preview": "cd web && bun run preview"
   },
   "packageManager": "bun@latest"
 }
