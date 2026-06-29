@@ -21,6 +21,7 @@ The real MVP is complete only when a task can use a model-backed master route, a
 - `demo_business_agent` now calls PydanticAI for `DemoBusinessResult` when model execution is enabled.
 - `demo_business_agent` wraps model output in the existing `BusinessResultEnvelope` and `demo.result_card` UI descriptor.
 - `demo_business_agent` registers `call_frontend_bridge` as a PydanticAI tool and reuses Agent Server's internal client-action API.
+- Business agents can use `agent_core.business_app.BusinessAgentApp` to reuse the FastAPI/A2A/Redis/bridge service shell while keeping PydanticAI tool decorators on the exposed `business.pydantic` agent.
 - Local memory-backed smoke passes without model credentials by using deterministic fallback behavior.
 - Redis-backed end-to-end smoke remains the external verification gate when Redis is available.
 
