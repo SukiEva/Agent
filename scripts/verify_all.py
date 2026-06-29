@@ -39,6 +39,7 @@ def main() -> int:
         "tests/test_ci_workflow.py",
         "tests/test_config.py",
         "tests/test_dev_services.py",
+        "tests/test_demo_business_agent_model.py",
         "tests/test_files.py",
         "tests/test_agent_server_auth.py",
         "tests/test_agent_server_files.py",

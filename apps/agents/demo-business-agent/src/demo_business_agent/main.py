@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+from contextvars import ContextVar
+import json
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 from agent_core.auth import build_internal_auth_headers
 from agent_core.a2a import build_agent_card
 from agent_core.config import load_service_config
-from agent_core.llm import build_pydantic_agent
+from agent_core.llm import build_pydantic_agent, should_execute_model
 from agent_core.logging import configure_service_logging
 from agent_core.schemas.errors import AgentError
 from agent_core.schemas.business import BusinessProgressEvent, BusinessResultEnvelope, DeliveryDirective
@@ -18,6 +21,14 @@ from agent_core.schemas.ui import UiDescriptor, UiFallback
 from agent_core.serialization import json_line, to_dict
 from agent_core.server import hypercorn_bind
 from agent_core.stores import create_runtime_stores
+
+_bridge_context: ContextVar[tuple[FastAPI, dict[str, Any]] | None] = ContextVar("bridge_context", default=None)
+
+
+class DemoBusinessResult(BaseModel):
+    summary: str
+    items: list[str] = Field(default_factory=list)
+    ui_title: str = "Demo Result"
 
 
 def _conf_dir() -> Path:
@@ -35,6 +46,11 @@ def create_app() -> FastAPI:
     app.state.pydantic_agent = build_pydantic_agent(
         app.state.settings,
         system_prompt="Run the demo business task and return structured business results.",
+    )
+    app.state.pydantic_agent.tool_plain(
+        call_frontend_bridge,
+        name="call_frontend_bridge",
+        description="Call a frontend bridge function in the user's active browser session.",
     )
     app.state.stores = create_runtime_stores(app.state.settings)
     app.state.cancelled_tasks = set()
@@ -95,33 +111,14 @@ def create_app() -> FastAPI:
                 yield json_line(_cancelled_event(agent_id, run_id, task_id))
                 return
             attachments = _attachment_summaries(payload)
-            envelope = BusinessResultEnvelope(
-                status="completed",
+            business_result = await _generate_business_result(app, payload, bridge_result, attachments)
+            envelope = _business_result_envelope(
                 agent_id=agent_id,
                 run_id=run_id,
                 task_id=task_id,
-                result_type="demo_result.v1",
-                result={
-                    "summary": f"Processed: {payload['user_message']['content']}",
-                    "items": ["A2A routing worked", "SSE replay path is ready", "UI descriptor delivered"],
-                    "bridge_result": bridge_result,
-                    "attachments": attachments,
-                },
-                ui=UiDescriptor(
-                    component="demo.result_card",
-                    component_version="v1",
-                    props={
-                        "title": "Demo Result",
-                        "summary": f"Processed: {payload['user_message']['content']}",
-                        "items": ["A2A routing worked", "SSE replay path is ready", "UI descriptor delivered"],
-                        "attachments": attachments,
-                    },
-                    fallback=UiFallback(
-                        component="common.markdown",
-                        props={"content": "Demo result completed."},
-                    ),
-                ),
-                delivery=DeliveryDirective(mode="passthrough", final=True, needs_master_summary=False),
+                result=business_result,
+                bridge_result=bridge_result,
+                attachments=attachments,
             )
             yield json_line({"type": "business.result", "envelope": to_dict(envelope)})
 
@@ -133,6 +130,124 @@ def create_app() -> FastAPI:
         return {"status": "cancel_requested", "task_id": task_id}
 
     return app
+
+
+def _business_result_envelope(
+    *,
+    agent_id: str,
+    run_id: str,
+    task_id: str,
+    result: DemoBusinessResult,
+    bridge_result: dict[str, object] | None,
+    attachments: list[dict[str, object]],
+) -> BusinessResultEnvelope:
+    return BusinessResultEnvelope(
+        status="completed",
+        agent_id=agent_id,
+        run_id=run_id,
+        task_id=task_id,
+        result_type="demo_result.v1",
+        result={
+            "summary": result.summary,
+            "items": result.items,
+            "bridge_result": bridge_result,
+            "attachments": attachments,
+        },
+        ui=UiDescriptor(
+            component="demo.result_card",
+            component_version="v1",
+            props={
+                "title": result.ui_title,
+                "summary": result.summary,
+                "items": result.items,
+                "attachments": attachments,
+            },
+            fallback=UiFallback(
+                component="common.markdown",
+                props={"content": result.summary},
+            ),
+        ),
+        delivery=DeliveryDirective(mode="passthrough", final=True, needs_master_summary=False),
+    )
+
+
+async def call_frontend_bridge(
+    action_name: str,
+    args: dict[str, object],
+    timeout_ms: int = 30000,
+) -> dict[str, object]:
+    context = _bridge_context.get()
+    if context is None:
+        return {"status": "unavailable", "error": "frontend bridge context is not available"}
+    app, payload = context
+    return await _call_frontend_bridge_request(app, payload, action_name, args, timeout_ms)
+
+
+async def _generate_business_result(
+    app: FastAPI,
+    payload: dict[str, Any],
+    bridge_result: dict[str, object] | None,
+    attachments: list[dict[str, object]],
+) -> DemoBusinessResult:
+    if not should_execute_model(app.state.settings):
+        return _fallback_business_result(payload)
+    token = _bridge_context.set((app, payload))
+    try:
+        result = await app.state.pydantic_agent.run(
+            _business_result_prompt(payload, bridge_result, attachments),
+            output_type=DemoBusinessResult,
+        )
+        output = _agent_output(result)
+        if isinstance(output, DemoBusinessResult):
+            return output
+        if isinstance(output, dict):
+            return DemoBusinessResult(**output)
+        return DemoBusinessResult.model_validate(output)
+    except Exception:
+        return _fallback_business_result(payload)
+    finally:
+        _bridge_context.reset(token)
+
+
+def _business_result_prompt(
+    payload: dict[str, Any],
+    bridge_result: dict[str, object] | None,
+    attachments: list[dict[str, object]],
+) -> str:
+    request = {
+        "user_message": _user_message_text(payload),
+        "attachments": attachments,
+        "bridge_result": bridge_result,
+    }
+    return (
+        "Generate a concise demo business result for the user. "
+        "Return only the structured DemoBusinessResult fields requested by the output schema. "
+        "Use call_frontend_bridge only if you need live browser context beyond the provided bridge_result.\n\n"
+        f"{json.dumps(request, ensure_ascii=False, separators=(',', ':'))}"
+    )
+
+
+def _fallback_business_result(payload: dict[str, Any]) -> DemoBusinessResult:
+    return DemoBusinessResult(
+        summary=f"Processed: {_user_message_text(payload)}",
+        items=["A2A routing worked", "SSE replay path is ready", "UI descriptor delivered"],
+        ui_title="Demo Result",
+    )
+
+
+def _agent_output(result: Any) -> Any:
+    for attr in ("output", "data"):
+        if hasattr(result, attr):
+            return getattr(result, attr)
+    return result
+
+def _user_message_text(payload: dict[str, Any]) -> str:
+    message = payload.get("user_message")
+    if isinstance(message, dict):
+        content = message.get("content")
+        if content is not None:
+            return str(content)
+    return str(message or "")
 
 
 def _is_cancelled(app: FastAPI, task_id: str) -> bool:
@@ -205,10 +320,21 @@ async def _maybe_call_frontend_bridge(app: FastAPI, payload: dict[str, Any]) -> 
     bridge = payload.get("context", {}).get("bridge")
     if not isinstance(bridge, dict) or not bridge.get("enabled"):
         return None
-    import httpx
 
     action_name = str(bridge.get("action_name", "get_selected_text"))
     args = bridge.get("args") if isinstance(bridge.get("args"), dict) else {}
+    return await _call_frontend_bridge_request(app, payload, action_name, args, int(bridge.get("timeout_ms", 30000)))
+
+
+async def _call_frontend_bridge_request(
+    app: FastAPI,
+    payload: dict[str, Any],
+    action_name: str,
+    args: dict[str, object],
+    timeout_ms: int,
+) -> dict[str, object]:
+    import httpx
+
     agent_server_base_url = app.state.settings.get("agent_server", {}).get("base_url", "http://localhost:8000")
     agent_id = app.state.settings["agent"]["id"]
     headers = build_internal_auth_headers(
@@ -226,7 +352,7 @@ async def _maybe_call_frontend_bridge(app: FastAPI, payload: dict[str, Any]) -> 
                 "agent_id": agent_id,
                 "action_name": action_name,
                 "args": args,
-                "timeout_ms": int(bridge.get("timeout_ms", 30000)),
+                "timeout_ms": timeout_ms,
             },
         )
         response.raise_for_status()

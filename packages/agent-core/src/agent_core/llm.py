@@ -9,6 +9,9 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 
+DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+
+
 @dataclass(frozen=True)
 class OpenAICompatibleModelConfig:
     base_url: str
@@ -23,12 +26,17 @@ def openai_compatible_config(settings: dict[str, Any]) -> OpenAICompatibleModelC
     if not isinstance(llm, dict):
         llm = {}
     return OpenAICompatibleModelConfig(
-        base_url=str(llm.get("base_url", "https://api.openai.com/v1")),
+        base_url=str(llm.get("base_url", DEFAULT_OPENAI_BASE_URL)),
         api_key=str(llm.get("api_key", "")),
         model=str(llm.get("model", "gpt-4.1-mini")),
         temperature=float(llm.get("temperature", 0.2)),
         timeout_seconds=int(llm.get("timeout_seconds", 60)),
     )
+
+
+def should_execute_model(settings: dict[str, Any]) -> bool:
+    config = openai_compatible_config(settings)
+    return bool(config.api_key) or config.base_url.rstrip("/") != DEFAULT_OPENAI_BASE_URL
 
 
 def build_openai_compatible_model(settings: dict[str, Any]) -> OpenAIChatModel:

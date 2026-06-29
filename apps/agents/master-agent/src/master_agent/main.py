@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 from agent_core.a2a import build_agent_card
 from agent_core.config import load_service_config
@@ -16,11 +18,16 @@ from agent_core.events import (
     agui_text_start,
 )
 from agent_core.ids import new_message_id
-from agent_core.llm import build_pydantic_agent
+from agent_core.llm import build_pydantic_agent, should_execute_model
 from agent_core.logging import configure_service_logging
 from agent_core.serialization import json_line, parse_json_line
 from agent_core.server import hypercorn_bind
 from agent_core.stores import create_runtime_stores
+
+class RouteDecision(BaseModel):
+    target_agent_id: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    reason: str = ""
 
 
 def _conf_dir() -> Path:
@@ -115,8 +122,68 @@ async def _choose_business_agent(app: FastAPI, payload: dict[str, Any]) -> str |
     if selected_agent_id:
         return str(selected_agent_id)
     agents = await _load_business_agents(app)
+    return await _select_business_agent_with_model(app.state.pydantic_agent, app.state.settings, agents, payload)
+
+
+async def _select_business_agent_with_model(
+    agent: Any,
+    settings: dict[str, Any],
+    agents: list[dict[str, Any]],
+    payload: dict[str, Any],
+) -> str | None:
+    if should_execute_model(settings):
+        decision = await _route_with_model(agent, agents, payload)
+        if decision and _is_valid_agent_id(decision.target_agent_id, agents):
+            return decision.target_agent_id
     return _select_business_agent(agents, _user_message_text(payload))
 
+
+async def _route_with_model(agent: Any, agents: list[dict[str, Any]], payload: dict[str, Any]) -> RouteDecision | None:
+    if not agents:
+        return None
+    try:
+        result = await agent.run(_route_prompt(agents, payload), output_type=RouteDecision)
+        output = _agent_output(result)
+        if isinstance(output, RouteDecision):
+            return output
+        if isinstance(output, dict):
+            return RouteDecision(**output)
+        return RouteDecision.model_validate(output)
+    except Exception:
+        return None
+
+
+def _route_prompt(agents: list[dict[str, Any]], payload: dict[str, Any]) -> str:
+    candidates = [
+        {
+            "agent_id": agent.get("agent_id"),
+            "display": agent.get("display", {}),
+            "capabilities": agent.get("capabilities", []),
+            "healthy": agent.get("healthy", True),
+        }
+        for agent in agents
+    ]
+    request = {
+        "user_message": _user_message_text(payload),
+        "attachments": payload.get("attachments", []),
+        "business_agents": candidates,
+    }
+    return (
+        "Choose exactly one business agent for this user task. "
+        "Return only the structured RouteDecision fields requested by the output schema.\n\n"
+        f"{json.dumps(request, ensure_ascii=False, separators=(',', ':'))}"
+    )
+
+
+def _agent_output(result: Any) -> Any:
+    for attr in ("output", "data"):
+        if hasattr(result, attr):
+            return getattr(result, attr)
+    return result
+
+
+def _is_valid_agent_id(agent_id: str, agents: list[dict[str, Any]]) -> bool:
+    return agent_id in {str(agent["agent_id"]) for agent in agents}
 
 async def _load_business_agents(app: FastAPI) -> list[dict[str, Any]]:
     import httpx

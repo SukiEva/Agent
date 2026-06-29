@@ -10,15 +10,19 @@ The current implementation proves the transport path:
 Vue -> Agent Server -> Agent Gateway -> master_agent -> business_agent -> Agent Server SSE -> Vue
 ```
 
-It does not yet prove a real agent runtime because:
-
-- `master_agent` creates a PydanticAI `Agent`, but does not call it for routing.
-- `demo_business_agent` creates a PydanticAI `Agent`, but returns deterministic fake results.
-- Frontend bridge actions are implemented at the transport level, but not exposed as PydanticAI tools.
-- Redis stores exist, but the default local smoke uses memory state.
-- Redis-backed end-to-end smoke is configured for CI, but has not been proven in the local environment used so far.
+The first skeleton implementation did not prove a real agent runtime because it created PydanticAI agents without calling them, used deterministic demo results, and exercised Redis mostly through store tests.
 
 The real MVP is complete only when a task can use a model-backed master route, a model-backed business result, Redis-backed runtime state, and the existing SSE UI path.
+
+## Current Implementation Status
+
+- `master_agent` now calls PydanticAI for routing when model execution is enabled.
+- `master_agent` falls back to deterministic token scoring when the model is disabled, fails, or returns an invalid target.
+- `demo_business_agent` now calls PydanticAI for `DemoBusinessResult` when model execution is enabled.
+- `demo_business_agent` wraps model output in the existing `BusinessResultEnvelope` and `demo.result_card` UI descriptor.
+- `demo_business_agent` registers `call_frontend_bridge` as a PydanticAI tool and reuses Agent Server's internal client-action API.
+- Local memory-backed smoke passes without model credentials by using deterministic fallback behavior.
+- Redis-backed end-to-end smoke remains the external verification gate when Redis is available.
 
 ## Non-Negotiable Boundaries
 
@@ -205,13 +209,13 @@ The real MVP is not done until all gates pass.
 
 ### Automated Gates
 
-- Unit test: master model routing selects a valid agent from model output.
-- Unit test: invalid master model routing falls back to deterministic routing.
-- Unit test: business model output is wrapped into `BusinessResultEnvelope`.
-- Unit test: business model failure returns a structured error or configured fallback.
-- Unit test: frontend bridge tool calls Agent Server internal API and returns result.
-- Redis store tests continue to cover direct Redis command usage.
-- `python scripts/verify_all.py` passes.
+- Unit test: master model routing selects a valid agent from model output. Implemented in `tests/test_master_agent_routing.py`.
+- Unit test: invalid master model routing falls back to deterministic routing. Implemented in `tests/test_master_agent_routing.py`.
+- Unit test: business model output is wrapped into `BusinessResultEnvelope`. Implemented in `tests/test_demo_business_agent_model.py`.
+- Unit test: business model failure returns a structured error or configured fallback. Implemented in `tests/test_demo_business_agent_model.py`.
+- Unit test: frontend bridge tool calls Agent Server internal API and returns result. Implemented in `tests/test_demo_business_agent_model.py`.
+- Redis store tests continue to cover direct Redis command usage. Implemented in `tests/test_redis_stores.py`.
+- `python scripts/verify_all.py` passes locally.
 - `python scripts/verify_mvp.py --redis required` passes in an environment with Redis.
 
 ### Manual Gate

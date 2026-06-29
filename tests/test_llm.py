@@ -7,7 +7,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 
 from agent_core.config import validate_service_config
-from agent_core.llm import build_openai_compatible_model, build_pydantic_agent, openai_compatible_config
+from agent_core.llm import build_openai_compatible_model, build_pydantic_agent, openai_compatible_config, should_execute_model
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,7 +48,14 @@ def test_agent_apps_create_pydantic_ai_agents() -> None:
     assert isinstance(create_master_app().state.pydantic_agent, Agent)
 
 
+def test_model_execution_is_enabled_only_with_credentials_or_custom_endpoint() -> None:
+    assert should_execute_model({"llm": {"base_url": "https://api.openai.com/v1", "api_key": ""}}) is False
+    assert should_execute_model({"llm": {"base_url": "https://api.openai.com/v1", "api_key": "secret"}}) is True
+    assert should_execute_model({"llm": {"base_url": "http://localhost:11434/v1", "api_key": ""}}) is True
+
+
 if __name__ == "__main__":
     test_openai_compatible_config_is_validated_and_builds_pydantic_ai_objects()
     test_agent_apps_create_pydantic_ai_agents()
+    test_model_execution_is_enabled_only_with_credentials_or_custom_endpoint()
     print("llm tests ok")

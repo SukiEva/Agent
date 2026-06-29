@@ -25,6 +25,9 @@ The current matrix verifies the communication skeleton MVP. The remaining real m
 | Config loading through OmegaConf and typed settings | `tests/test_config.py` |
 | JSON structured logging SDK | `tests/test_logging.py` |
 | OpenAI-compatible PydanticAI model config | `tests/test_llm.py` |
+| Model-backed master routing path | `tests/test_master_agent_routing.py` with fake model runner |
+| Model-backed business result path | `tests/test_demo_business_agent_model.py` with fake model runner |
+| PydanticAI frontend bridge tool wrapper | `tests/test_demo_business_agent_model.py` |
 | User auth and internal auth extension points | `tests/test_auth.py`, `tests/test_agent_server_auth.py` |
 | Redis Cluster-compatible key layout and store command semantics | `tests/test_agent_core_stores.py`, `tests/test_redis_stores.py` |
 | Redis runtime preflight | `tests/test_dev_services.py`; `scripts/dev_services.py --runtime-store redis` fails fast when Redis is unreachable |

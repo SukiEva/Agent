@@ -75,6 +75,7 @@ def main() -> int:
     child_env = os.environ.copy()
     child_env["AGENT_RUNTIME_STORE"] = args.runtime_store
     child_env["AGENT_REDIS_URL"] = args.redis_url
+    child_env.setdefault("UV_CACHE_DIR", "/tmp/agent-uv-cache")
 
     if args.runtime_store == "redis" and not check_redis(args.redis_url):
         return 1
