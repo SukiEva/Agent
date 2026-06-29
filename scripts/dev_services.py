@@ -50,6 +50,11 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("AGENT_REDIS_URL", "redis://localhost:6379/0"),
         help="Redis URL used when --runtime-store redis is selected.",
     )
+    parser.add_argument(
+        "--model",
+        default=os.environ.get("OPENAI_MODEL"),
+        help="Optional OPENAI_MODEL value to pass to agent services. Use 'test' for local PydanticAI TestModel smoke.",
+    )
     parser.add_argument("--smoke", action="store_true", help="Run scripts/smoke_backend.py after all services are healthy.")
     parser.add_argument("--exit-after-smoke", action="store_true", help="Stop services after --smoke completes.")
     return parser.parse_args()
@@ -76,6 +81,8 @@ def main() -> int:
     child_env["AGENT_RUNTIME_STORE"] = args.runtime_store
     child_env["AGENT_REDIS_URL"] = args.redis_url
     child_env.setdefault("UV_CACHE_DIR", "/tmp/agent-uv-cache")
+    if args.model:
+        child_env["OPENAI_MODEL"] = args.model
 
     if args.runtime_store == "redis" and not check_redis(args.redis_url):
         return 1

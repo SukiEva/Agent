@@ -43,6 +43,7 @@ def main() -> int:
     args = parse_args()
     run([sys.executable, "scripts/verify_all.py"])
     run([sys.executable, "scripts/dev_services.py", "--smoke", "--exit-after-smoke"])
+    run([sys.executable, "scripts/dev_services.py", "--model", "test", "--smoke", "--exit-after-smoke"])
 
     if args.redis == "skip":
         print("redis-backed smoke skipped")

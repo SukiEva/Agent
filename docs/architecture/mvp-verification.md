@@ -37,6 +37,7 @@ The current matrix verifies the communication skeleton MVP. The remaining real m
 ```bash
 python scripts/verify_all.py
 python scripts/dev_services.py --smoke --exit-after-smoke
+python scripts/dev_services.py --model test --smoke --exit-after-smoke
 python scripts/verify_mvp.py
 ```
 

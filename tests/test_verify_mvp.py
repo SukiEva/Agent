@@ -17,6 +17,7 @@ def test_verify_mvp_skips_redis_when_optional_and_unreachable() -> None:
     assert _command_suffixes(calls) == [
         ["scripts/verify_all.py"],
         ["scripts/dev_services.py", "--smoke", "--exit-after-smoke"],
+        ["scripts/dev_services.py", "--model", "test", "--smoke", "--exit-after-smoke"],
     ]
 
 
@@ -32,6 +33,7 @@ def test_verify_mvp_requires_redis_when_requested() -> None:
     assert _command_suffixes(calls) == [
         ["scripts/verify_all.py"],
         ["scripts/dev_services.py", "--smoke", "--exit-after-smoke"],
+        ["scripts/dev_services.py", "--model", "test", "--smoke", "--exit-after-smoke"],
     ]
 
 
@@ -77,7 +79,7 @@ def test_verify_mvp_can_skip_redis_smoke() -> None:
     exit_code = _run_verify_mvp(["verify_mvp.py", "--redis", "skip"], calls, redis_available=True)
 
     assert exit_code == 0
-    assert len(calls) == 2
+    assert len(calls) == 3
 
 
 def _run_verify_mvp(
