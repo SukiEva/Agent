@@ -1,0 +1,51 @@
+name: MVP Verification
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Python dependencies
+        run: uv sync
+
+      - name: Install frontend dependencies
+        run: bun install
+
+      - name: Run local verification suite
+        run: ./.venv/bin/python scripts/verify_all.py
+
+      - name: Run in-memory backend smoke
+        run: ./.venv/bin/python scripts/dev_services.py --smoke --exit-after-smoke
+
+      - name: Run Redis-backed backend smoke
+        env:
+          AGENT_REDIS_URL: redis://localhost:6379/0
+        run: ./.venv/bin/python scripts/dev_services.py --runtime-store redis --smoke --exit-after-smoke

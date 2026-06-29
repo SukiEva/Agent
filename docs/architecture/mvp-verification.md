@@ -33,6 +33,14 @@ python scripts/verify_all.py
 python scripts/dev_services.py --smoke --exit-after-smoke
 ```
 
+## CI Verification
+
+`.github/workflows/mvp.yml` runs the same verification suite in GitHub Actions, including a Redis service-backed smoke:
+
+- `python scripts/verify_all.py`
+- `python scripts/dev_services.py --smoke --exit-after-smoke`
+- `python scripts/dev_services.py --runtime-store redis --smoke --exit-after-smoke`
+
 For Redis-backed runtime state:
 
 ```bash
@@ -52,4 +60,4 @@ The repository includes:
 - `deploy/docker-compose.yml` for local Redis.
 - `dev_services.py` Redis preflight with clear failure output.
 
-The remaining confirmation step is running the Redis-backed smoke command in an environment with Redis available.
+The remaining local confirmation step is running the Redis-backed smoke command in an environment with Redis available. CI is configured to provide Redis as a service and run that command automatically.
