@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from contextvars import ContextVar
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
@@ -39,8 +40,17 @@ def _settings() -> dict[str, Any]:
     return load_service_config(_conf_dir())
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    _start_command_listener(app)
+    try:
+        yield
+    finally:
+        await _stop_command_listener(app)
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title="Demo Business Agent")
+    app = FastAPI(title="Demo Business Agent", lifespan=lifespan)
     app.state.settings = _settings()
     configure_service_logging(app.state.settings)
     app.state.pydantic_agent = build_pydantic_agent(
@@ -54,14 +64,6 @@ def create_app() -> FastAPI:
     )
     app.state.stores = create_runtime_stores(app.state.settings)
     app.state.cancelled_tasks = set()
-
-    @app.on_event("startup")
-    async def startup() -> None:
-        _start_command_listener(app)
-
-    @app.on_event("shutdown")
-    async def shutdown() -> None:
-        await _stop_command_listener(app)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
