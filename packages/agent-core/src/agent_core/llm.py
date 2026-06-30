@@ -21,6 +21,7 @@ class OpenAICompatibleModelConfig:
     model: str
     temperature: float
     timeout_seconds: int
+    required: bool
 
 
 def openai_compatible_config(settings: dict[str, Any]) -> OpenAICompatibleModelConfig:
@@ -33,18 +34,30 @@ def openai_compatible_config(settings: dict[str, Any]) -> OpenAICompatibleModelC
         model=str(llm.get("model", "gpt-4.1-mini")),
         temperature=float(llm.get("temperature", 0.2)),
         timeout_seconds=int(llm.get("timeout_seconds", 60)),
+        required=bool(llm.get("required", False)),
     )
 
 
 def should_execute_model(settings: dict[str, Any]) -> bool:
     config = openai_compatible_config(settings)
-    return config.model == "test" or bool(config.api_key) or config.base_url.rstrip("/") != DEFAULT_OPENAI_BASE_URL
+    return (
+        config.required
+        or config.model == "test"
+        or bool(config.api_key)
+        or config.base_url.rstrip("/") != DEFAULT_OPENAI_BASE_URL
+    )
+
+
+def model_fallback_allowed(settings: dict[str, Any]) -> bool:
+    return not openai_compatible_config(settings).required
 
 
 def build_openai_compatible_model(settings: dict[str, Any]) -> Model[Any]:
     config = openai_compatible_config(settings)
     if config.model == "test":
         return TestModel()
+    if config.required and not config.api_key and config.base_url.rstrip("/") == DEFAULT_OPENAI_BASE_URL:
+        raise ValueError("OPENAI_API_KEY is required when llm.required is true")
     provider = OpenAIProvider(
         base_url=config.base_url,
         api_key=config.api_key or None,

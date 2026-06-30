@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--redis-start",
-        choices=("auto", "none", "redis-server", "docker-compose"),
+        choices=("auto", "none", "redis-server", "docker-run", "docker-compose"),
         default="auto",
         help="How to start a temporary Redis when --redis required is requested and Redis is not reachable.",
     )
@@ -83,10 +83,37 @@ def _redis_context(redis_mode: str, redis_url: str, start_mode: str) -> Abstract
         return nullcontext(False)
     if start_mode in {"auto", "redis-server"} and shutil.which("redis-server"):
         return TempRedisServer(redis_url)
-    if start_mode in {"auto", "docker-compose"} and shutil.which("docker"):
-        return DockerComposeRedis(redis_url)
+    if start_mode in {"auto", "docker-run"} and docker_run_available():
+        return DockerRunRedis(redis_url)
+    if start_mode in {"auto", "docker-compose"}:
+        compose_command = docker_compose_command()
+        if compose_command:
+            return DockerComposeRedis(redis_url, compose_command)
     print("redis-backed smoke requires Redis, but no usable redis-server or docker executable was found")
     return nullcontext(False)
+
+
+def docker_compose_command() -> list[str] | None:
+    if shutil.which("docker"):
+        command = ["docker", "compose"]
+        if _command_succeeds([*command, "version"]):
+            return command
+    if shutil.which("docker-compose"):
+        command = ["docker-compose"]
+        if _command_succeeds([*command, "version"]):
+            return command
+    return None
+
+
+def docker_run_available() -> bool:
+    return bool(shutil.which("docker")) and _command_succeeds(["docker", "version"])
+
+
+def _command_succeeds(command: list[str]) -> bool:
+    try:
+        return subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False).returncode == 0
+    except OSError:
+        return False
 
 
 class TempRedisServer:
@@ -129,12 +156,13 @@ class TempRedisServer:
 
 
 class DockerComposeRedis:
-    def __init__(self, redis_url: str) -> None:
+    def __init__(self, redis_url: str, compose_command: list[str]) -> None:
         self.redis_url = redis_url
+        self.compose_command = compose_command
 
     def __enter__(self) -> bool:
         compose_file = ROOT / "deploy" / "docker-compose.yml"
-        command = ["docker", "compose", "-f", str(compose_file), "up", "-d", "redis"]
+        command = [*self.compose_command, "-f", str(compose_file), "up", "-d", "redis"]
         print("+", " ".join(command), flush=True)
         try:
             subprocess.run(command, cwd=ROOT, check=True)
@@ -144,7 +172,37 @@ class DockerComposeRedis:
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         compose_file = ROOT / "deploy" / "docker-compose.yml"
-        subprocess.run(["docker", "compose", "-f", str(compose_file), "down"], cwd=ROOT, check=False)
+        subprocess.run([*self.compose_command, "-f", str(compose_file), "down"], cwd=ROOT, check=False)
+
+
+class DockerRunRedis:
+    def __init__(self, redis_url: str) -> None:
+        self.redis_url = redis_url
+        self.container_name = "agent-mvp-redis"
+
+    def __enter__(self) -> bool:
+        parsed = urlparse(self.redis_url)
+        host_port = str(parsed.port or 6379)
+        command = [
+            "docker",
+            "run",
+            "--rm",
+            "-d",
+            "--name",
+            self.container_name,
+            "-p",
+            f"{host_port}:6379",
+            "redis:7-alpine",
+        ]
+        print("+", " ".join(command), flush=True)
+        try:
+            subprocess.run(command, cwd=ROOT, check=True)
+        except subprocess.CalledProcessError:
+            return False
+        return _wait_for_redis(self.redis_url, timeout_seconds=20.0)
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        subprocess.run(["docker", "stop", self.container_name], cwd=ROOT, check=False)
 
 
 def _wait_for_redis(redis_url: str, timeout_seconds: float) -> bool:

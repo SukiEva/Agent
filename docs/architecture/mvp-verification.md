@@ -25,6 +25,7 @@ The current matrix verifies the communication skeleton MVP. The remaining real m
 | Config loading through OmegaConf and typed settings | `tests/test_config.py` |
 | JSON structured logging SDK | `tests/test_logging.py` |
 | OpenAI-compatible PydanticAI model config | `tests/test_llm.py` |
+| Required model mode fail-fast and no-fallback behavior | `tests/test_llm.py`, `tests/test_master_agent_routing.py`, `tests/test_demo_business_agent_model.py` |
 | Model-backed master routing path | `tests/test_master_agent_routing.py` with PydanticAI `Agent(TestModel)` |
 | Model-backed business result path | `tests/test_demo_business_agent_model.py` with PydanticAI `Agent(TestModel)` |
 | PydanticAI frontend bridge tool wrapper | `tests/test_demo_business_agent_model.py` |
@@ -54,11 +55,12 @@ docker compose -f deploy/docker-compose.yml up -d redis
 python scripts/verify_mvp.py --redis required
 ```
 
-`verify_mvp.py --redis required` first checks the configured Redis URL. If Redis is not reachable, it can start a temporary Redis using a local `redis-server` executable or Docker Compose when available:
+`verify_mvp.py --redis required` first checks the configured Redis URL. If Redis is not reachable, it can start a temporary Redis using a local `redis-server` executable, `docker run`, `docker compose`, or `docker-compose` when available:
 
 ```bash
 python scripts/verify_mvp.py --redis required --redis-start auto
 python scripts/verify_mvp.py --redis required --redis-start redis-server
+python scripts/verify_mvp.py --redis required --redis-start docker-run
 python scripts/verify_mvp.py --redis required --redis-start docker-compose
 python scripts/verify_mvp.py --redis required --redis-start none
 ```

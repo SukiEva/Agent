@@ -82,6 +82,60 @@ def test_verify_mvp_can_skip_redis_smoke() -> None:
     assert len(calls) == 3
 
 
+def test_docker_compose_command_ignores_docker_without_compose_plugin() -> None:
+    original_which = verify_mvp.shutil.which
+    original_command_succeeds = verify_mvp._command_succeeds
+    try:
+        verify_mvp.shutil.which = lambda command: "/usr/bin/docker" if command == "docker" else None
+        verify_mvp._command_succeeds = lambda _command: False
+
+        assert verify_mvp.docker_compose_command() is None
+    finally:
+        verify_mvp.shutil.which = original_which
+        verify_mvp._command_succeeds = original_command_succeeds
+
+
+def test_docker_compose_command_supports_legacy_binary() -> None:
+    original_which = verify_mvp.shutil.which
+    original_command_succeeds = verify_mvp._command_succeeds
+    try:
+        verify_mvp.shutil.which = lambda command: f"/usr/bin/{command}" if command in {"docker", "docker-compose"} else None
+        verify_mvp._command_succeeds = lambda command: command[0] == "docker-compose"
+
+        assert verify_mvp.docker_compose_command() == ["docker-compose"]
+    finally:
+        verify_mvp.shutil.which = original_which
+        verify_mvp._command_succeeds = original_command_succeeds
+
+
+def test_redis_context_uses_docker_run_when_available() -> None:
+    original_check_redis = verify_mvp.check_redis
+    original_which = verify_mvp.shutil.which
+    original_docker_run_available = verify_mvp.docker_run_available
+    original_context = verify_mvp.DockerRunRedis
+    created: list[str] = []
+    try:
+        verify_mvp.check_redis = lambda _url: False
+        verify_mvp.shutil.which = lambda _command: None
+        verify_mvp.docker_run_available = lambda: True
+
+        class FakeDockerRunRedis(FakeRedisContext):
+            def __init__(self, redis_url: str) -> None:
+                created.append(redis_url)
+                super().__init__(True)
+
+        verify_mvp.DockerRunRedis = FakeDockerRunRedis
+
+        with verify_mvp._redis_context("required", "redis://localhost:6380/0", "auto") as ready:
+            assert ready is True
+        assert created == ["redis://localhost:6380/0"]
+    finally:
+        verify_mvp.check_redis = original_check_redis
+        verify_mvp.shutil.which = original_which
+        verify_mvp.docker_run_available = original_docker_run_available
+        verify_mvp.DockerRunRedis = original_context
+
+
 def _run_verify_mvp(
     argv: list[str],
     calls: list[list[str]],
@@ -127,4 +181,7 @@ if __name__ == "__main__":
     test_verify_mvp_runs_redis_smoke_when_reachable()
     test_verify_mvp_autostarts_redis_for_required_smoke()
     test_verify_mvp_can_skip_redis_smoke()
+    test_docker_compose_command_ignores_docker_without_compose_plugin()
+    test_docker_compose_command_supports_legacy_binary()
+    test_redis_context_uses_docker_run_when_available()
     print("verify mvp tests ok")

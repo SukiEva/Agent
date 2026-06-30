@@ -15,6 +15,7 @@ def test_service_config_is_validated_and_preserves_service_specific_sections() -
             "runtime": {"store": "redis", "ttl_seconds": 30, "event_maxlen": 100},
             "auth": {"user": {"mode": "header"}, "internal": {"mode": "shared_secret", "secret": "secret"}},
             "logging": {"format": "text"},
+            "llm": {"required": True},
             "agent": {"id": "demo_business_agent", "display": {"label": "Demo", "description": "Demo agent."}},
         }
     )
@@ -23,6 +24,7 @@ def test_service_config_is_validated_and_preserves_service_specific_sections() -
     assert config["runtime"]["store"] == "redis"
     assert config["auth"]["user"]["mode"] == "header"
     assert config["logging"]["format"] == "text"
+    assert config["llm"]["required"] is True
     assert config["agent"]["id"] == "demo_business_agent"
 
 

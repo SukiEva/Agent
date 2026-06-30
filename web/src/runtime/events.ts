@@ -150,6 +150,13 @@ function handleCustomEvent(state: RuntimeState, event: AgUiEvent): void {
   }
   if (event.name === "ui.component.render") {
     state.uiRenders.push(event.value as UiRender);
+    return;
+  }
+  if (event.name === "business.error") {
+    const value = event.value as Record<string, unknown>;
+    const error = value.error as Record<string, unknown> | undefined;
+    state.isRunning = false;
+    state.error = String(error?.message ?? "Business task failed");
   }
 }
 

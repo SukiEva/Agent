@@ -69,6 +69,23 @@ def test_demo_business_agent_falls_back_when_model_fails() -> None:
     assert result.summary == "Processed: hello"
 
 
+def test_demo_business_agent_required_model_failure_returns_business_error() -> None:
+    original_agent = demo_main.business.pydantic
+    demo_main.business.pydantic = FailingAgent()
+    ctx = _context(settings=_required_model_settings())
+
+    try:
+        events = asyncio.run(_collect_task_events(ctx))
+    finally:
+        demo_main.business.pydantic = original_agent
+
+    error_events = [event for event in events if event["type"] == "business.error"]
+    assert len(error_events) == 1
+    assert error_events[0]["error"]["code"] == "MODEL_TASK_FAILED"
+    assert error_events[0]["error"]["message"] == "model failed"
+    assert not any(event["type"] == "business.result" for event in events)
+
+
 def test_frontend_bridge_tool_uses_current_context() -> None:
     context = FakeBridgeContext()
     token = _bridge_context.set(context)
@@ -126,9 +143,21 @@ def _model_settings() -> dict[str, object]:
     return {"llm": {"base_url": "https://api.openai.com/v1", "api_key": "test-key"}}
 
 
+def _required_model_settings() -> dict[str, object]:
+    return {
+        "agent": {"id": "demo_business_agent"},
+        "llm": {"base_url": "https://api.openai.com/v1", "api_key": "test-key", "required": True},
+    }
+
+
+async def _collect_task_events(ctx: BusinessTaskContext[DemoBusinessResult]) -> list[dict[str, object]]:
+    return [event async for event in demo_main.business._run_task(ctx)]
+
+
 if __name__ == "__main__":
     test_demo_business_model_output_is_wrapped_in_result_envelope()
     test_demo_business_agent_calls_model_when_enabled()
     test_demo_business_agent_falls_back_when_model_fails()
+    test_demo_business_agent_required_model_failure_returns_business_error()
     test_frontend_bridge_tool_uses_current_context()
     print("demo business agent model tests ok")

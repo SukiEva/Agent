@@ -16,7 +16,7 @@ from pydantic_ai import Agent
 from agent_core.a2a import build_agent_card
 from agent_core.auth import build_internal_auth_headers
 from agent_core.config import load_service_config
-from agent_core.llm import build_pydantic_agent, should_execute_model
+from agent_core.llm import build_pydantic_agent, model_fallback_allowed, should_execute_model
 from agent_core.logging import configure_service_logging
 from agent_core.schemas.business import BusinessProgressEvent, BusinessResultEnvelope, DeliveryDirective
 from agent_core.schemas.errors import AgentError
@@ -131,7 +131,11 @@ class BusinessAgentApp(Generic[OutputT]):
             raise RuntimeError(f"business agent {self.title} has no task handler")
         token = _bridge_context.set(context)
         try:
-            envelope = await handler(context)
+            try:
+                envelope = await handler(context)
+            except Exception as exc:
+                yield context.error_event("MODEL_TASK_FAILED", str(exc), recoverable=False, retryable=True)
+                return
         finally:
             _bridge_context.reset(token)
         if context.is_cancelled():
@@ -293,6 +297,8 @@ class BusinessTaskContext(Generic[OutputT]):
                 return self.business.output_type(**output)
             return self.business.output_type.model_validate(output)
         except Exception:
+            if not model_fallback_allowed(self.app.state.settings):
+                raise
             return self.business.fallback_factory(self)
 
     def result(
@@ -326,6 +332,17 @@ class BusinessTaskContext(Generic[OutputT]):
         )
 
     def cancelled_event(self) -> dict[str, object]:
+        return self.error_event("TASK_CANCELLED", "Task was cancelled.", recoverable=True, retryable=True, cancelled=True)
+
+    def error_event(
+        self,
+        code: str,
+        message: str,
+        *,
+        recoverable: bool,
+        retryable: bool,
+        cancelled: bool = False,
+    ) -> dict[str, object]:
         return {
             "type": "business.error",
             "agent_id": self.agent_id,
@@ -333,11 +350,11 @@ class BusinessTaskContext(Generic[OutputT]):
             "task_id": self.task_id,
             "error": to_dict(
                 AgentError(
-                    code="TASK_CANCELLED",
-                    message="Task was cancelled.",
-                    recoverable=True,
-                    retryable=True,
-                    cancelled=True,
+                    code=code,
+                    message=message,
+                    recoverable=recoverable,
+                    retryable=retryable,
+                    cancelled=cancelled,
                 )
             ),
         }

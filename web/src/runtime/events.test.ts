@@ -94,7 +94,26 @@ function testRunErrorAndReset() {
   assertDeepEqual(state, createRuntimeState());
 }
 
+function testBusinessErrorStopsRun() {
+  const state = createRuntimeState();
+
+  applyAgUiEvent(state, { type: "RUN_STARTED", runId: "run_1" });
+  applyAgUiEvent(state, {
+    type: "CUSTOM",
+    name: "business.error",
+    value: {
+      error: {
+        message: "model failed",
+      },
+    },
+  });
+
+  assertEqual(state.isRunning, false);
+  assertEqual(state.error, "model failed");
+}
+
 testNormalRunEvents();
 testBridgeEventsReturnExecutionEffect();
 testRunErrorAndReset();
+testBusinessErrorStopsRun();
 console.log("frontend runtime event tests ok");

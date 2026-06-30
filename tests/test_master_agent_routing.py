@@ -100,6 +100,30 @@ def test_master_agent_invalid_model_route_falls_back_to_token_matching() -> None
     assert agent.calls == 1
 
 
+def test_master_agent_required_model_failure_does_not_fallback() -> None:
+    agents = [
+        {
+            "agent_id": "contract_agent",
+            "role": "business",
+            "capabilities": [{"name": "contract_review", "description": "Review contracts."}],
+        },
+    ]
+
+    try:
+        asyncio.run(
+            _select_business_agent_with_model(
+                FailingAgent(),
+                {"llm": {"required": True, "api_key": "test-key"}},
+                agents,
+                {"user_message": {"type": "text", "content": "review this contract"}},
+            )
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "model failed"
+    else:
+        raise AssertionError("required routing model failure should not fallback")
+
+
 class FakeAgent:
     def __init__(self, output: object) -> None:
         self.output = output
@@ -109,6 +133,11 @@ class FakeAgent:
         self.calls += 1
         assert output_type is RouteDecision
         return SimpleNamespace(output=self.output)
+
+
+class FailingAgent:
+    async def run(self, _prompt: str, *, output_type: object) -> object:
+        raise RuntimeError("model failed")
 
 
 def _model_settings() -> dict[str, object]:
@@ -121,4 +150,5 @@ if __name__ == "__main__":
     test_master_agent_extracts_user_message_content()
     test_master_agent_model_routing_selects_valid_agent()
     test_master_agent_invalid_model_route_falls_back_to_token_matching()
+    test_master_agent_required_model_failure_does_not_fallback()
     print("master agent routing tests ok")

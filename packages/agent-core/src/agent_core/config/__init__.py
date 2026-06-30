@@ -83,6 +83,7 @@ class LlmBlock(BaseModel):
     model: str = "gpt-4.1-mini"
     temperature: float = Field(default=0.2, ge=0)
     timeout_seconds: int = Field(default=60, ge=1)
+    required: bool = False
 
 
 class GatewayBlock(BaseModel):

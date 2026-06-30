@@ -178,11 +178,13 @@ llm:
   model: ${oc.env:OPENAI_MODEL,gpt-4.1-mini}
   temperature: ${oc.env:OPENAI_TEMPERATURE,0.2}
   timeout_seconds: ${oc.env:OPENAI_TIMEOUT_SECONDS,60}
+  required: ${oc.env:OPENAI_REQUIRED,false}
 ```
 
 Rules:
 
 - Missing API key should fail fast only when model execution is required.
+- `OPENAI_REQUIRED=true` disables deterministic fallback for model call failures.
 - Tests should not require a real external model.
 - Unit tests use fake PydanticAI-compatible runners or dependency injection.
 - One optional manual smoke can use a real OpenAI-compatible endpoint.

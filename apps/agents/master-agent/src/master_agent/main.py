@@ -19,7 +19,7 @@ from agent_core.events import (
     agui_text_start,
 )
 from agent_core.ids import new_message_id
-from agent_core.llm import build_pydantic_agent, should_execute_model
+from agent_core.llm import build_pydantic_agent, model_fallback_allowed, should_execute_model
 from agent_core.logging import configure_service_logging
 from agent_core.serialization import json_line, parse_json_line
 from agent_core.server import hypercorn_bind
@@ -135,13 +135,18 @@ async def _select_business_agent_with_model(
     payload: dict[str, Any],
 ) -> str | None:
     if should_execute_model(settings):
-        decision = await _route_with_model(agent, agents, payload)
+        decision = await _route_with_model(agent, settings, agents, payload)
         if decision and _is_valid_agent_id(decision.target_agent_id, agents):
             return decision.target_agent_id
     return _select_business_agent(agents, _user_message_text(payload))
 
 
-async def _route_with_model(agent: Any, agents: list[dict[str, Any]], payload: dict[str, Any]) -> RouteDecision | None:
+async def _route_with_model(
+    agent: Any,
+    settings: dict[str, Any],
+    agents: list[dict[str, Any]],
+    payload: dict[str, Any],
+) -> RouteDecision | None:
     if not agents:
         return None
     try:
@@ -153,6 +158,8 @@ async def _route_with_model(agent: Any, agents: list[dict[str, Any]], payload: d
             return RouteDecision(**output)
         return RouteDecision.model_validate(output)
     except Exception:
+        if not model_fallback_allowed(settings):
+            raise
         return None
 
 
