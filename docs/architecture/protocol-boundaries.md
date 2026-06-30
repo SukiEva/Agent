@@ -21,7 +21,7 @@ SSE events are AG-UI-compatible. The MVP supports an AG-UI subset:
 - Run lifecycle events.
 - Text message events.
 - Tool call events for frontend bridge actions.
-- Custom events for progress and UI rendering.
+- Custom events for user-visible analysis progress and UI rendering.
 
 ## Agent Server to Agent Gateway
 
@@ -50,6 +50,7 @@ Business task input uses a shared `BusinessTaskRequest` envelope. Business task 
 - `business.error`
 
 Business agents do not directly emit AG-UI events as their public result protocol.
+`business.progress` is public execution or analysis progress for the user interface, not raw model chain-of-thought.
 
 ## PydanticAI and AG-UI
 

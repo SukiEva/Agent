@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, AsyncIterator, Generic, TypeVar
+from typing import Any, AsyncIterator, Generic, Literal, TypeVar
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
@@ -137,6 +137,7 @@ class BusinessAgentApp(Generic[OutputT]):
         if context.is_cancelled():
             yield context.cancelled_event()
             return
+        yield to_dict(context.progress(context.final_progress_message, status="completed"))
         yield {"type": "business.result", "envelope": to_dict(envelope)}
 
     def _start_command_listener(self, app: FastAPI) -> None:
@@ -190,8 +191,12 @@ class BusinessTaskContext(Generic[OutputT]):
         return [
             "Demo agent accepted the task.",
             "Demo agent is preparing a component descriptor.",
-            "Demo agent completed the business result.",
+            "Demo agent is generating the business result.",
         ]
+
+    @property
+    def final_progress_message(self) -> str:
+        return "Demo agent completed the business result."
 
     @property
     def attachments(self) -> list[dict[str, object]]:
@@ -228,12 +233,13 @@ class BusinessTaskContext(Generic[OutputT]):
     def is_cancelled(self) -> bool:
         return self.task_id in self.app.state.cancelled_tasks
 
-    def progress(self, message: str) -> BusinessProgressEvent:
+    def progress(self, message: str, *, status: Literal["running", "completed"] = "running") -> BusinessProgressEvent:
         return BusinessProgressEvent(
             agent_id=self.agent_id,
             run_id=self.run_id,
             task_id=self.task_id,
             message=message,
+            status=status,
         )
 
     async def maybe_frontend_bridge(self) -> dict[str, object] | None:

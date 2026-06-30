@@ -32,3 +32,4 @@ class BusinessProgressEvent(BaseModel):
     run_id: str
     task_id: str
     message: str
+    status: Literal["running", "completed"] = "running"

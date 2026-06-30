@@ -56,6 +56,7 @@ business_agent
 ```
 
 Business agents stream internal progress envelopes. `master_agent` decides whether to forward them as AG-UI custom progress events.
+The frontend renders these events as a folded analysis timeline. These events are user-visible status updates, not raw model chain-of-thought.
 
 ## Final Result
 
@@ -79,6 +80,7 @@ Business result envelopes include:
 - `error`, when failed
 
 `delivery.mode` controls whether `master_agent` should pass through, summarize, or compose the final user output.
+The final user output is emitted as AG-UI text start/content/end events. Long text may be split across multiple content deltas and assembled by Vue.
 
 ## Frontend Bridge Tool
 

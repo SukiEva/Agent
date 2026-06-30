@@ -4,7 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import json
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Iterable
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
@@ -293,6 +293,7 @@ async def _business_to_agui(event: dict[str, Any]):
                 "run_id": event["run_id"],
                 "task_id": event["task_id"],
                 "message": event["message"],
+                "status": event.get("status", "running"),
             },
         )
         return
@@ -301,9 +302,8 @@ async def _business_to_agui(event: dict[str, Any]):
         envelope = event["envelope"]
         message_id = new_message_id()
         summary = _business_result_text(envelope)
-        yield agui_text_start(message_id)
-        yield agui_text_delta(message_id, summary)
-        yield agui_text_end(message_id)
+        for agui_event in _text_message_events(message_id, summary):
+            yield agui_event
         ui = envelope.get("ui")
         if ui:
             yield agui_custom("ui.component.render", ui)
@@ -345,6 +345,27 @@ def _compose_business_result(summary: str, result: dict[str, Any], envelope: dic
         lines.append("Warnings:")
         lines.extend(f"- {warning}" for warning in warnings)
     return "\n".join(str(line) for line in lines)
+
+
+def _text_message_events(message_id: str, text: str) -> Iterable[dict[str, object]]:
+    yield agui_text_start(message_id)
+    for delta in _text_deltas(text):
+        yield agui_text_delta(message_id, delta)
+    yield agui_text_end(message_id)
+
+
+def _text_deltas(text: str, max_chars: int = 80) -> Iterable[str]:
+    if not text:
+        return
+    start = 0
+    while start < len(text):
+        end = min(start + max_chars, len(text))
+        if end < len(text):
+            boundary = max(text.rfind(" ", start, end), text.rfind("\n", start, end))
+            if boundary > start + max_chars // 3:
+                end = boundary + 1
+        yield text[start:end]
+        start = end
 
 
 app = create_app()

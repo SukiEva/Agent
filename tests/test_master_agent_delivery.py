@@ -31,7 +31,44 @@ def test_master_agent_composes_business_result_items_and_warnings() -> None:
     assert deltas == ["Processed contract.\n- Clause A\n- Clause B\nWarnings:\n- Missing appendix"]
 
 
-async def _collect_business_result_events(mode: str) -> list[dict[str, object]]:
+def test_master_agent_splits_long_business_result_text_into_deltas() -> None:
+    events = asyncio.run(_collect_business_result_events("compose", item_count=12))
+
+    deltas = [event["delta"] for event in events if event["type"] == "TEXT_MESSAGE_CONTENT"]
+    assert len(deltas) > 1
+    assert "".join(str(delta) for delta in deltas).startswith("Processed contract.\n- Clause 1")
+    assert events[0]["type"] == "TEXT_MESSAGE_START"
+    assert events[-1]["type"] == "TEXT_MESSAGE_END"
+
+
+def test_master_agent_forwards_business_progress_as_custom_analysis_event() -> None:
+    event = {
+        "type": "business.progress",
+        "agent_id": "demo_business_agent",
+        "run_id": "run_1",
+        "task_id": "task_1",
+        "message": "working",
+        "status": "completed",
+    }
+
+    events = asyncio.run(_collect_events(event))
+
+    assert events == [
+        {
+            "type": "CUSTOM",
+            "name": "business.progress",
+            "value": {
+                "agent_id": "demo_business_agent",
+                "run_id": "run_1",
+                "task_id": "task_1",
+                "message": "working",
+                "status": "completed",
+            },
+        }
+    ]
+
+
+async def _collect_business_result_events_with_items(mode: str, items: list[str]) -> list[dict[str, object]]:
     event = {
         "type": "business.result",
         "envelope": {
@@ -42,7 +79,7 @@ async def _collect_business_result_events(mode: str) -> list[dict[str, object]]:
             "result_type": "demo_result.v1",
             "result": {
                 "summary": "Processed contract.",
-                "items": ["Clause A", "Clause B"],
+                "items": items,
             },
             "delivery": {
                 "mode": mode,
@@ -52,6 +89,15 @@ async def _collect_business_result_events(mode: str) -> list[dict[str, object]]:
             "warnings": ["Missing appendix"],
         },
     }
+    return await _collect_events(event)
+
+
+async def _collect_business_result_events(mode: str, item_count: int | None = None) -> list[dict[str, object]]:
+    items = ["Clause A", "Clause B"] if item_count is None else [f"Clause {index}" for index in range(1, item_count + 1)]
+    return await _collect_business_result_events_with_items(mode, items)
+
+
+async def _collect_events(event: dict[str, object]) -> list[dict[str, object]]:
     return [agui_event async for agui_event in _business_to_agui(event)]
 
 
@@ -59,4 +105,6 @@ if __name__ == "__main__":
     test_master_agent_passes_through_business_result_summary()
     test_master_agent_summarizes_business_result_items()
     test_master_agent_composes_business_result_items_and_warnings()
+    test_master_agent_splits_long_business_result_text_into_deltas()
+    test_master_agent_forwards_business_progress_as_custom_analysis_event()
     print("master agent delivery tests ok")

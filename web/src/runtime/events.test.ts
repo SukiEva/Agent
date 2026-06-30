@@ -19,7 +19,13 @@ function testNormalRunEvents() {
   applyAgUiEvent(state, {
     type: "CUSTOM",
     name: "business.progress",
-    value: { agent_id: "demo_business_agent", message: "working" },
+    value: {
+      agent_id: "demo_business_agent",
+      run_id: "run_1",
+      task_id: "task_1",
+      message: "working",
+      status: "running",
+    },
   });
   applyAgUiEvent(state, { type: "TEXT_MESSAGE_START", messageId: "msg_1", role: "assistant" });
   applyAgUiEvent(state, { type: "TEXT_MESSAGE_CONTENT", messageId: "msg_1", delta: "hello" });
@@ -43,7 +49,15 @@ function testNormalRunEvents() {
 
   assertEqual(state.isRunning, false);
   assertEqual(state.runId, "run_1");
-  assertDeepEqual(state.progressEvents, [{ agentId: "demo_business_agent", message: "working" }]);
+  assertDeepEqual(state.progressEvents, [
+    {
+      agentId: "demo_business_agent",
+      runId: "run_1",
+      taskId: "task_1",
+      message: "working",
+      status: "running",
+    },
+  ]);
   assertEqual(state.messages[0].content, "hello world");
   assertEqual(state.messages[0].complete, true);
   assertEqual(state.uiRenders[0].component, "demo.result_card");

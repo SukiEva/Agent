@@ -12,7 +12,10 @@ export type Message = {
 
 export type ProgressEvent = {
   agentId: string;
+  runId: string;
+  taskId: string;
   message: string;
+  status: "running" | "completed";
 };
 
 export type ToolCall = {
@@ -138,7 +141,10 @@ function handleCustomEvent(state: RuntimeState, event: AgUiEvent): void {
     const value = event.value as Record<string, unknown>;
     state.progressEvents.push({
       agentId: String(value.agent_id ?? ""),
+      runId: String(value.run_id ?? ""),
+      taskId: String(value.task_id ?? ""),
       message: String(value.message ?? ""),
+      status: value.status === "completed" ? "completed" : "running",
     });
     return;
   }

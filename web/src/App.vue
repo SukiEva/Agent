@@ -297,18 +297,25 @@ function authQueryString(path = ""): string {
         <p v-if="runtimeState.error" class="error">{{ runtimeState.error }}</p>
 
         <section class="stream">
-          <div class="panel">
-            <h2>Progress</h2>
+          <details class="panel process-panel">
+            <summary>
+              <span>Analysis</span>
+              <small>{{ runtimeState.progressEvents.length }}</small>
+            </summary>
             <ol>
-              <li v-for="(progress, index) in runtimeState.progressEvents" :key="`${progress.agentId}-${index}`">
+              <li
+                v-for="(progress, index) in runtimeState.progressEvents"
+                :key="`${progress.agentId}-${progress.taskId}-${index}`"
+                :class="progress.status"
+              >
                 <span>{{ progress.agentId }}</span>
-                {{ progress.message }}
+                <p>{{ progress.message }}</p>
               </li>
             </ol>
-          </div>
+          </details>
 
           <div class="panel">
-            <h2>Messages</h2>
+            <h2>Final Answer</h2>
             <article v-for="message in runtimeState.messages" :key="message.id" class="message">
               <span>{{ message.role }}</span>
               <p>{{ message.content }}</p>
@@ -582,6 +589,39 @@ button:disabled {
   padding: 16px;
 }
 
+.process-panel {
+  min-height: auto;
+}
+
+.process-panel[open] {
+  min-height: 160px;
+}
+
+.process-panel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #17202a;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.process-panel summary small {
+  min-width: 24px;
+  border-radius: 999px;
+  background: #edf0f4;
+  color: #4c5969;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 22px;
+  text-align: center;
+}
+
+.process-panel ol {
+  margin-top: 12px;
+}
+
 ol,
 ul {
   margin: 0;
@@ -596,6 +636,10 @@ li span {
   display: block;
   color: #687385;
   font-size: 12px;
+}
+
+li.completed p {
+  font-weight: 650;
 }
 
 .message,
